@@ -128,9 +128,9 @@ class CdkStack(core.Stack):
         ###########################################################################
         # AWS SQS QUEUES
         ###########################################################################
-        images_queue_iqueue = aws_sqs.Queue(self, "images_queue_iqueue")
-        images_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=images_queue_iqueue)
-        images_queue = aws_sqs.Queue(self, "images_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=images_queue_dlq)
+        comprehend_queue_iqueue = aws_sqs.Queue(self, "comprehend_queue_iqueue")
+        comprehend_queue_iqueue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=comprehend_queue_iqueue)
+        comprehend_queue = aws_sqs.Queue(self, "comprehend_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=comprehend_queue_iqueue_dlq)
 
 
         rekognition_queue_iqueue = aws_sqs.Queue(self, "rekognition_queue_iqueue")
@@ -216,7 +216,7 @@ class CdkStack(core.Stack):
 
 
         parse_image_list_file.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint )
-        parse_image_list_file.add_environment("QUEUEURL", images_queue.queue_url )
+        parse_image_list_file.add_environment("QUEUEURL", rekognition_queue.queue_url )
         parse_image_list_file.add_environment("DEBUG", "False" )
         parse_image_list_file.add_environment("BUCKET", "-" )
         parse_image_list_file.add_environment("KEY", "-" )
@@ -294,20 +294,20 @@ class CdkStack(core.Stack):
                                                                         # volumes=None
                                                                         )
 
-        # put_task_definition = aws_ecs.TaskDefinition(self, "puttaskdefinition",
-        #                                                                 compatibility=aws_ecs.Compatibility("FARGATE"), 
-        #                                                                 cpu="1024", 
-        #                                                                 # ipc_mode=None, 
-        #                                                                 memory_mib="2048", 
-        #                                                                 network_mode=aws_ecs.NetworkMode("AWS_VPC"), 
-        #                                                                 # pid_mode=None,                                      #Not supported in Fargate and Windows containers
-        #                                                                 # placement_constraints=None, 
-        #                                                                 execution_role=task_execution_role, 
-        #                                                                 # family=None, 
-        #                                                                 # proxy_configuration=None, 
-        #                                                                 task_role=task_role
-        #                                                                 # volumes=None
-        #                                                                 )
+        comprehend_task_definition = aws_ecs.TaskDefinition(self, "comprehend_task_definition",
+                                                                        compatibility=aws_ecs.Compatibility("FARGATE"), 
+                                                                        cpu="1024", 
+                                                                        # ipc_mode=None, 
+                                                                        memory_mib="2048", 
+                                                                        network_mode=aws_ecs.NetworkMode("AWS_VPC"), 
+                                                                        # pid_mode=None,                                      #Not supported in Fargate and Windows containers
+                                                                        # placement_constraints=None, 
+                                                                        execution_role=task_execution_role, 
+                                                                        # family=None, 
+                                                                        # proxy_configuration=None, 
+                                                                        task_role=task_role
+                                                                        # volumes=None
+                                                                        )
 
 
 
@@ -316,16 +316,16 @@ class CdkStack(core.Stack):
         # AMAZON ECS Images 
         ###########################################################################
         rekognition_ecr_image = aws_ecs.EcrImage(repository=rekognition_repository, tag="latest")
-        # put_repository_ecr_image = aws_ecs.EcrImage(repository=put_repository, tag="latest")
+        comprehend_ecr_image = aws_ecs.EcrImage(repository=put_repository, tag="latest")
         # xray_repository_ecr_image = aws_ecs.EcrImage(repository=xray_repository, tag="latest")
         environment_variables = {}
-        environment_variables["IMAGES_QUEUE"] = images_queue.queue_url
+        environment_variables["COMPREHEND_QUEUE"] = comprehend_queue.queue_url
         environment_variables["REKOGNITION_QUEUE"] = rekognition_queue.queue_url
         environment_variables["IMAGES_BUCKET"] = images_bucket.bucket_name
         environment_variables["ELASTICSEARCH_HOST"] = s3workflow_domain.domain_endpoint
         
-        rekognition_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="S3LoadTest", log_retention=aws_logs.RetentionDays("ONE_DAY"))
-        # put_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="S3LoadTest", log_retention=aws_logs.RetentionDays("ONE_WEEK"))
+        rekognition_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="s3workflow", log_retention=aws_logs.RetentionDays("ONE_DAY"))
+        comprehend_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="s3workflow", log_retention=aws_logs.RetentionDays("ONE_DAY"))
         # xray_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="S3LoadTest", log_retention=aws_logs.RetentionDays("ONE_WEEK"))
 
 
@@ -342,12 +342,12 @@ class CdkStack(core.Stack):
         #                                             logging=xray_task_log_driver
         #                                             )
 
-        # put_task_definition.add_container("put_task_definition_put", 
-        #                                             image=put_repository_ecr_image, 
-        #                                             memory_reservation_mib=1024,
-        #                                             environment=environment_variables,
-        #                                             logging=put_task_log_driver
-        #                                             )
+        comprehend_task_definition.add_container("comprehend_task_definition", 
+                                                    image=comprehend_ecr_image, 
+                                                    memory_reservation_mib=1024,
+                                                    environment=environment_variables,
+                                                    logging=comprehend_task_log_driver
+                                                    )
         # put_task_definition.add_container("put_task_definition_xray", 
         #                                             image=xray_repository_ecr_image, 
         #                                             memory_reservation_mib=1024,
@@ -359,13 +359,13 @@ class CdkStack(core.Stack):
         ###########################################################################
         # AMAZON ECS CLUSTER 
         ###########################################################################
-        cluster = aws_ecs.Cluster(self, "LoadTestCluster", vpc=vpc)
+        cluster = aws_ecs.Cluster(self, "s3", vpc=vpc)
 
 
         ###########################################################################
         # AWS ROUTE53 HOSTED ZONE 
         ###########################################################################
-        hosted_zone = aws_route53.HostedZone(self, "hosted_zone", zone_name="s3workload.com" ,comment="private hosted zone for s3workload system")
+        hosted_zone = aws_route53.HostedZone(self, "hosted_zone", zone_name="s3workflow.com" ,comment="private hosted zone for s3workflow system")
         hosted_zone.add_vpc(vpc)
         # images_bucket_record_values = [images_bucket.bucket_name]
         # queue_record_values = [ecs_task_queue_queue.queue_url]
