@@ -66,26 +66,32 @@ class CdkStack(core.Stack):
         ###########################################################################
         # AWS LAMBDA FUNCTIONS 
         ###########################################################################
-        parseimagelistfile = aws_lambda.Function(self,'sqs_to_elastic_cloud',
-        handler='parseimagelistfile.lambda_handler',
+        parse_image_list_file = aws_lambda.Function(self,'parse_image_list_file',
+        handler='parse_image_list_file.lambda_handler',
         runtime=aws_lambda.Runtime.PYTHON_3_7,
-        code=aws_lambda.Code.asset('parseimagelistfile'),
+        code=aws_lambda.Code.asset('parse_image_list_file'),
         memory_size=4096,
         timeout=core.Duration.seconds(301),
         log_retention=logs.RetentionDays.ONE_DAY
         )
 
-        # sqs_to_elasticsearch_service = aws_lambda.Function(self,'sqs_to_elasticsearch_service',
-        # handler='sqs_to_elasticsearch_service.lambda_handler',
-        # runtime=aws_lambda.Runtime.PYTHON_3_7,
-        # code=aws_lambda.Code.asset('sqs_to_elasticsearch_service'),
-        # memory_size=4096,
-        # timeout=core.Duration.seconds(301),
-        # log_retention=logs.RetentionDays.ONE_DAY
-        # )
-        ###########################################################################
-        # AWS LAMBDA FUNCTIONS 
-        ###########################################################################
+        list_objects = aws_lambda.Function(self,'list_objects',
+        handler='list_objects.lambda_handler',
+        runtime=aws_lambda.Runtime.PYTHON_3_7,
+        code=aws_lambda.Code.asset('list_objects'),
+        memory_size=4096,
+        timeout=core.Duration.seconds(301),
+        log_retention=logs.RetentionDays.ONE_DAY
+        )
+
+        get_size_and_store = aws_lambda.Function(self,'get_size_and_store',
+        handler='get_size_and_store.lambda_handler',
+        runtime=aws_lambda.Runtime.PYTHON_3_7,
+        code=aws_lambda.Code.asset('get_size_and_store'),
+        memory_size=4096,
+        timeout=core.Duration.seconds(301),
+        log_retention=logs.RetentionDays.ONE_DAY
+        )
 
 
         ###########################################################################
@@ -103,8 +109,8 @@ class CdkStack(core.Stack):
             resources=["*"]
             )
 
-        parseimagelistfile.add_to_role_policy(lambda_supplemental_policy_statement)
-        # sqs_to_elasticsearch_service.add_to_role_policy(lambda_supplemental_policy_statement)
+        parse_image_list_file.add_to_role_policy(lambda_supplemental_policy_statement)
+        list_objects.add_to_role_policy(lambda_supplemental_policy_statement)
         ###########################################################################
         # AWS SNS TOPICS 
         ###########################################################################
@@ -113,7 +119,7 @@ class CdkStack(core.Stack):
         ###########################################################################
         # ADD AMAZON S3 BUCKET NOTIFICATIONS
         ###########################################################################
-        image_bucket.add_event_notification(aws_s3.EventType.OBJECT_CREATED, aws_s3_notifications.LambdaDestination(parseimagelistfile))
+        image_bucket.add_event_notification(aws_s3.EventType.OBJECT_CREATED, aws_s3_notifications.LambdaDestination(parse_image_list_file))
 
 
         ###########################################################################
@@ -122,6 +128,17 @@ class CdkStack(core.Stack):
         images_queue_iqueue = aws_sqs.Queue(self, "images_queue_iqueue")
         images_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=images_queue_iqueue)
         images_queue = aws_sqs.Queue(self, "images_queue", visibility_timeout=core.Duration.seconds(300), dead_letter_queue=images_queue_dlq)
+
+
+        recognition_queue_iqueue = aws_sqs.Queue(self, "recognition_queue_iqueue")
+        recognition_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=recognition_queue_iqueue)
+        recognition_queue = aws_sqs.Queue(self, "recognition_queue", visibility_timeout=core.Duration.seconds(300), dead_letter_queue=recognition_queue_dlq)
+
+
+        object_queue_iqueue = aws_sqs.Queue(self, "object_queue_iqueue")
+        object_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=object_queue_iqueue)
+        object_queue = aws_sqs.Queue(self, "object_queue", visibility_timeout=core.Duration.seconds(300), dead_letter_queue=object_queue_dlq)
+
 
         # sqs_to_elastic_cloud_queue_iqueue = aws_sqs.Queue(self, "sqs_to_elastic_cloud_queue_dlq")
         # sqs_to_elastic_cloud_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=sqs_to_elastic_cloud_queue_iqueue)
@@ -138,7 +155,7 @@ class CdkStack(core.Stack):
         ###########################################################################
         # AWS LAMBDA SQS EVENT SOURCE
         ###########################################################################
-        # sqs_to_elastic_cloud.add_event_source(SqsEventSource(sqs_to_elastic_cloud_queue,batch_size=10))
+        get_size_and_store.add_event_source(SqsEventSource(object_queue,batch_size=10))
         # sqs_to_elasticsearch_service.add_event_source(SqsEventSource(sqs_to_elasticsearch_service_queue,batch_size=10))
 
 
@@ -195,12 +212,14 @@ class CdkStack(core.Stack):
                                                             )
 
 
-        parseimagelistfile.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint )
-        parseimagelistfile.add_environment("QUEUEURL", images_queue.queue_url )
-        parseimagelistfile.add_environment("DEBUG", "False" )
+        parse_image_list_file.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint )
+        parse_image_list_file.add_environment("QUEUEURL", images_queue.queue_url )
+        parse_image_list_file.add_environment("DEBUG", "False" )
+        parse_image_list_file.add_environment("BUCKET", "-" )
+        parse_image_list_file.add_environment("KEY", "-" )
 
-        # sqs_to_elastic_cloud.add_environment("ELASTICCLOUD_SECRET_NAME", "-")
-        # sqs_to_elastic_cloud.add_environment("ELASTIC_CLOUD_ID", "-")
+        get_size_and_store.add_environment("QUEUEURL", object_queue.queue_url)
+        get_size_and_store.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint)
         # sqs_to_elastic_cloud.add_environment("ELASTIC_CLOUD_PASSWORD", "-")
         # sqs_to_elastic_cloud.add_environment("ELASTIC_CLOUD_USERNAME", "-")
         # sqs_to_elastic_cloud.add_environment("QUEUEURL", sqs_to_elastic_cloud_queue.queue_url )
