@@ -71,7 +71,7 @@ class CdkStack(core.Stack):
         runtime=aws_lambda.Runtime.PYTHON_3_7,
         code=aws_lambda.Code.asset('parse_image_list_file'),
         memory_size=4096,
-        timeout=core.Duration.seconds(301),
+        timeout=core.Duration.seconds(300),
         log_retention=logs.RetentionDays.ONE_DAY
         )
 
@@ -80,7 +80,7 @@ class CdkStack(core.Stack):
         runtime=aws_lambda.Runtime.PYTHON_3_7,
         code=aws_lambda.Code.asset('list_objects'),
         memory_size=4096,
-        timeout=core.Duration.seconds(301),
+        timeout=core.Duration.seconds(300),
         log_retention=logs.RetentionDays.ONE_DAY
         )
 
@@ -89,7 +89,7 @@ class CdkStack(core.Stack):
         runtime=aws_lambda.Runtime.PYTHON_3_7,
         code=aws_lambda.Code.asset('get_size_and_store'),
         memory_size=4096,
-        timeout=core.Duration.seconds(301),
+        timeout=core.Duration.seconds(300),
         log_retention=logs.RetentionDays.ONE_DAY
         )
 
@@ -127,17 +127,17 @@ class CdkStack(core.Stack):
         ###########################################################################
         images_queue_iqueue = aws_sqs.Queue(self, "images_queue_iqueue")
         images_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=images_queue_iqueue)
-        images_queue = aws_sqs.Queue(self, "images_queue", visibility_timeout=core.Duration.seconds(300), dead_letter_queue=images_queue_dlq)
+        images_queue = aws_sqs.Queue(self, "images_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=images_queue_dlq)
 
 
         recognition_queue_iqueue = aws_sqs.Queue(self, "recognition_queue_iqueue")
         recognition_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=recognition_queue_iqueue)
-        recognition_queue = aws_sqs.Queue(self, "recognition_queue", visibility_timeout=core.Duration.seconds(300), dead_letter_queue=recognition_queue_dlq)
+        recognition_queue = aws_sqs.Queue(self, "recognition_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=recognition_queue_dlq)
 
 
         object_queue_iqueue = aws_sqs.Queue(self, "object_queue_iqueue")
         object_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=object_queue_iqueue)
-        object_queue = aws_sqs.Queue(self, "object_queue", visibility_timeout=core.Duration.seconds(300), dead_letter_queue=object_queue_dlq)
+        object_queue = aws_sqs.Queue(self, "object_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=object_queue_dlq)
 
 
         # sqs_to_elastic_cloud_queue_iqueue = aws_sqs.Queue(self, "sqs_to_elastic_cloud_queue_dlq")
