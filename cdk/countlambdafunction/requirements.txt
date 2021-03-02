@@ -1,0 +1,4 @@
+boto3
+datetime
+requests_aws4auth
+elasticsearch
