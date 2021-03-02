@@ -103,8 +103,8 @@ class CdkStack(core.Stack):
             resources=["*"]
             )
 
-        sqs_to_elastic_cloud.add_to_role_policy(lambda_supplemental_policy_statement)
-        sqs_to_elasticsearch_service.add_to_role_policy(lambda_supplemental_policy_statement)
+        parseimagelistfile.add_to_role_policy(lambda_supplemental_policy_statement)
+        # sqs_to_elasticsearch_service.add_to_role_policy(lambda_supplemental_policy_statement)
         ###########################################################################
         # AWS SNS TOPICS 
         ###########################################################################
