@@ -13,7 +13,7 @@ import aws_cdk.aws_elasticsearch as aws_elasticsearch
 import aws_cdk.aws_cognito as aws_cognito
 import aws_cdk.aws_elasticloadbalancingv2 as aws_elasticloadbalancingv2
 import aws_cdk.aws_ec2 as aws_ec2
-import aws_cdk.aws_logs as logs
+import aws_cdk.aws_logs as aws_logs
 import aws_cdk.aws_cloudtrail as aws_cloudtrail
 import inspect as inspect
 
@@ -60,7 +60,7 @@ class CdkStack(core.Stack):
         # my_provider = cr.Provider(self, "MyProvider",
         #     on_event_handler=customlambda,
         #     # is_complete_handler=is_complete, # optional async "waiter"
-        #     log_retention=logs.RetentionDays.SIX_MONTHS
+        #     log_retention=aws_logs.RetentionDays.SIX_MONTHS
         # )
 
         # CustomResource(self, 'customconfigresource', service_token=my_provider.service_token)
@@ -75,7 +75,7 @@ class CdkStack(core.Stack):
         code=aws_lambda.Code.asset('parse_image_list_file'),
         memory_size=4096,
         timeout=core.Duration.seconds(300),
-        log_retention=logs.RetentionDays.ONE_DAY
+        log_retention=aws_logs.RetentionDays.ONE_DAY
         )
 
         list_objects = aws_lambda.Function(self,'list_objects',
@@ -84,7 +84,7 @@ class CdkStack(core.Stack):
         code=aws_lambda.Code.asset('list_objects'),
         memory_size=4096,
         timeout=core.Duration.seconds(300),
-        log_retention=logs.RetentionDays.ONE_DAY
+        log_retention=aws_logs.RetentionDays.ONE_DAY
         )
 
         get_size_and_store = aws_lambda.Function(self,'get_size_and_store',
@@ -93,14 +93,14 @@ class CdkStack(core.Stack):
         code=aws_lambda.Code.asset('get_size_and_store'),
         memory_size=4096,
         timeout=core.Duration.seconds(300),
-        log_retention=logs.RetentionDays.ONE_DAY
+        log_retention=aws_logs.RetentionDays.ONE_DAY
         )
 
 
         ###########################################################################
         # AMAZON S3 BUCKETS 
         ###########################################################################
-        image_bucket = aws_s3.Bucket(self, "image_bucket")
+        images_bucket = aws_s3.Bucket(self, "images_bucket")
 
 
         ###########################################################################
@@ -122,7 +122,7 @@ class CdkStack(core.Stack):
         ###########################################################################
         # ADD AMAZON S3 BUCKET NOTIFICATIONS
         ###########################################################################
-        image_bucket.add_event_notification(aws_s3.EventType.OBJECT_CREATED, aws_s3_notifications.LambdaDestination(parse_image_list_file))
+        images_bucket.add_event_notification(aws_s3.EventType.OBJECT_CREATED, aws_s3_notifications.LambdaDestination(parse_image_list_file))
 
 
         ###########################################################################
@@ -133,9 +133,9 @@ class CdkStack(core.Stack):
         images_queue = aws_sqs.Queue(self, "images_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=images_queue_dlq)
 
 
-        recognition_queue_iqueue = aws_sqs.Queue(self, "recognition_queue_iqueue")
-        recognition_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=recognition_queue_iqueue)
-        recognition_queue = aws_sqs.Queue(self, "recognition_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=recognition_queue_dlq)
+        rekognition_queue_iqueue = aws_sqs.Queue(self, "rekognition_queue_iqueue")
+        rekognition_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=rekognition_queue_iqueue)
+        rekognition_queue = aws_sqs.Queue(self, "rekognition_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=rekognition_queue_dlq)
 
 
         object_queue_iqueue = aws_sqs.Queue(self, "object_queue_iqueue")
@@ -237,7 +237,7 @@ class CdkStack(core.Stack):
         ###########################################################################
         # AMAZON VPC  
         ###########################################################################
-        vpc = aws_ec2.Vpc(self, "LoadTestVPC", max_azs=3)     # default is all AZs in region
+        vpc = aws_ec2.Vpc(self, "s3workflowVPC", max_azs=3)     # default is all AZs in region
 
 
         ###########################################################################
@@ -245,7 +245,7 @@ class CdkStack(core.Stack):
         ###########################################################################
         # get_repository = aws_ecs.IRepository(self, "get_repository", image_scan_on_push=True, removal_policy=aws_cdk.core.RemovalPolicy("DESTROY") )
         # put_repository = aws_ecs.IRepository(self, "put_repository", image_scan_on_push=True, removal_policy=aws_cdk.core.RemovalPolicy("DESTROY") )
-        get_repository = aws_ecr.Repository(self, "get_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
+        rekognition_repository = aws_ecr.Repository(self, "rekognition_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
         put_repository = aws_ecr.Repository(self, "put_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
         xray_repository = aws_ecr.Repository(self, "xray_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
 
@@ -253,46 +253,46 @@ class CdkStack(core.Stack):
         ###########################################################################
         # AMAZON ECS Roles and Policies
         ###########################################################################        
-        # task_execution_policy_statement = aws_iam.PolicyStatement(
-        #     effect=aws_iam.Effect.ALLOW,
-        #     actions=["logs:*", "ecs:*", "ec2:*", "elasticloadbalancing:*","ecr:*"],
-        #     resources=["*"]
-        #     )
-        # task_execution_policy_document = aws_iam.PolicyDocument()
-        # task_execution_policy_document.add_statements(task_execution_policy_statement)
-        # task_execution_policy = aws_iam.Policy(self, "task_execution_policy", document=task_execution_policy_document)
-        # task_execution_role = aws_iam.Role(self, "task_execution_role", assumed_by=aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com') )
-        # task_execution_role.attach_inline_policy(task_execution_policy)
+        task_execution_policy_statement = aws_iam.PolicyStatement(
+            effect=aws_iam.Effect.ALLOW,
+            actions=["logs:*", "ecs:*", "ec2:*", "elasticloadbalancing:*","ecr:*"],
+            resources=["*"]
+            )
+        task_execution_policy_document = aws_iam.PolicyDocument()
+        task_execution_policy_document.add_statements(task_execution_policy_statement)
+        task_execution_policy = aws_iam.Policy(self, "task_execution_policy", document=task_execution_policy_document)
+        task_execution_role = aws_iam.Role(self, "task_execution_role", assumed_by=aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com') )
+        task_execution_role.attach_inline_policy(task_execution_policy)
 
-        # task_policy_statement = aws_iam.PolicyStatement(
-        #     effect=aws_iam.Effect.ALLOW,
-        #     actions=["logs:*", "xray:*", "sqs:*", "s3:*"],
-        #     resources=["*"]
-        #     )
-        # task_policy_document = aws_iam.PolicyDocument()
-        # task_policy_document.add_statements(task_policy_statement)
-        # task_policy = aws_iam.Policy(self, "task_policy", document=task_policy_document)
-        # task_role = aws_iam.Role(self, "task_role", assumed_by=aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com') )
-        # task_role.attach_inline_policy(task_policy)
+        task_policy_statement = aws_iam.PolicyStatement(
+            effect=aws_iam.Effect.ALLOW,
+            actions=["logs:*", "xray:*", "sqs:*", "s3:*", "rekognition:*", "comprehend:*", "es:*"],
+            resources=["*"]
+            )
+        task_policy_document = aws_iam.PolicyDocument()
+        task_policy_document.add_statements(task_policy_statement)
+        task_policy = aws_iam.Policy(self, "task_policy", document=task_policy_document)
+        task_role = aws_iam.Role(self, "task_role", assumed_by=aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com') )
+        task_role.attach_inline_policy(task_policy)
 
 
         ###########################################################################
         # AMAZON ECS Task definitions
         ###########################################################################
-        # get_task_definition = aws_ecs.TaskDefinition(self, "gettaskdefinition",
-        #                                                                 compatibility=aws_ecs.Compatibility("FARGATE"), 
-        #                                                                 cpu="1024", 
-        #                                                                 # ipc_mode=None, 
-        #                                                                 memory_mib="2048", 
-        #                                                                 network_mode=aws_ecs.NetworkMode("AWS_VPC"), 
-        #                                                                 # pid_mode=None,                                      #Not supported in Fargate and Windows containers
-        #                                                                 # placement_constraints=None, 
-        #                                                                 execution_role=task_execution_role, 
-        #                                                                 # family=None, 
-        #                                                                 # proxy_configuration=None, 
-        #                                                                 task_role=task_role
-        #                                                                 # volumes=None
-        #                                                                 )
+        rekognition_task_definition = aws_ecs.TaskDefinition(self, "rekognition_task_definition",
+                                                                        compatibility=aws_ecs.Compatibility("FARGATE"), 
+                                                                        cpu="1024", 
+                                                                        # ipc_mode=None, 
+                                                                        memory_mib="2048", 
+                                                                        network_mode=aws_ecs.NetworkMode("AWS_VPC"), 
+                                                                        # pid_mode=None,                                      #Not supported in Fargate and Windows containers
+                                                                        # placement_constraints=None, 
+                                                                        execution_role=task_execution_role, 
+                                                                        # family=None, 
+                                                                        # proxy_configuration=None, 
+                                                                        task_role=task_role
+                                                                        # volumes=None
+                                                                        )
 
         # put_task_definition = aws_ecs.TaskDefinition(self, "puttaskdefinition",
         #                                                                 compatibility=aws_ecs.Compatibility("FARGATE"), 
@@ -315,24 +315,26 @@ class CdkStack(core.Stack):
         ###########################################################################
         # AMAZON ECS Images 
         ###########################################################################
-        # get_repository_ecr_image = aws_ecs.EcrImage(repository=get_repository, tag="latest")
+        rekognition_ecr_image = aws_ecs.EcrImage(repository=rekognition_repository, tag="latest")
         # put_repository_ecr_image = aws_ecs.EcrImage(repository=put_repository, tag="latest")
         # xray_repository_ecr_image = aws_ecs.EcrImage(repository=xray_repository, tag="latest")
-        # environment_variables = {}
-        # environment_variables["SQS_QUEUE"] = ecs_task_queue_queue.queue_url
-        # environment_variables["S3_BUCKET"] = storage_bucket.bucket_name
+        environment_variables = {}
+        environment_variables["IMAGES_QUEUE"] = images_queue.queue_url
+        environment_variables["REKOGNITION_QUEUE"] = rekognition_queue.queue_url
+        environment_variables["IMAGES_BUCKET"] = images_bucket.bucket_name
+        environment_variables["ELASTICSEARCH_HOST"] = s3workflow_domain.domain_endpoint
         
-        # get_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="S3LoadTest", log_retention=aws_logs.RetentionDays("ONE_WEEK"))
+        rekognition_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="S3LoadTest", log_retention=aws_logs.RetentionDays("ONE_DAY"))
         # put_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="S3LoadTest", log_retention=aws_logs.RetentionDays("ONE_WEEK"))
         # xray_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="S3LoadTest", log_retention=aws_logs.RetentionDays("ONE_WEEK"))
 
 
-        # get_task_definition.add_container("get_task_definition_get", 
-        #                                             image=get_repository_ecr_image, 
-        #                                             memory_reservation_mib=1024,
-        #                                             environment=environment_variables,
-        #                                             logging=get_task_log_driver
-        #                                             )
+        rekognition_task_definition.add_container("rekognition_task_definition", 
+                                                    image=rekognition_ecr_image, 
+                                                    memory_reservation_mib=1024,
+                                                    environment=environment_variables,
+                                                    logging=rekognition_task_log_driver
+                                                    )
         # get_task_definition.add_container("get_task_definition_xray", 
         #                                             image=xray_repository_ecr_image, 
         #                                             memory_reservation_mib=1024,
@@ -365,11 +367,11 @@ class CdkStack(core.Stack):
         ###########################################################################
         hosted_zone = aws_route53.HostedZone(self, "hosted_zone", zone_name="s3workload.com" ,comment="private hosted zone for s3workload system")
         hosted_zone.add_vpc(vpc)
-        # bucket_record_values = [storage_bucket.bucket_name]
+        # images_bucket_record_values = [images_bucket.bucket_name]
         # queue_record_values = [ecs_task_queue_queue.queue_url]
-        # bucket_record_name = "bucket." + hosted_zone.zone_name
+        # images_bucket_record_name = "imagesbucket." + hosted_zone.zone_name
         # queue_record_name = "filesqueue." + hosted_zone.zone_name
-        # hosted_zone_record_bucket = aws_route53.TxtRecord(self, "hosted_zone_record_bucket", record_name=bucket_record_name, values=bucket_record_values, zone=hosted_zone, comment="dns record for bucket name")
+        # hosted_zone_record_bucket = aws_route53.TxtRecord(self, "hosted_zone_record_bucket", record_name=images_bucket_record_name, values=images_bucket_record_values, zone=hosted_zone, comment="dns record for images bucket name")
         # hosted_zone_record_queue = aws_route53.TxtRecord(self, "hosted_zone_record_queue", record_name=queue_record_name, values=queue_record_values, zone=hosted_zone, comment="dns record for queue name")
 
 
