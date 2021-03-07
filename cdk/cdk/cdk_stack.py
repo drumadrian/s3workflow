@@ -1,69 +1,35 @@
-from aws_cdk import core
-import aws_cdk.aws_secretsmanager as aws_secretsmanager
-# import aws_cdk.aws_cloudformation as aws_cloudformation
-import aws_cdk.aws_lambda as aws_lambda
-import aws_cdk.aws_iam as aws_iam
-import aws_cdk.aws_s3_notifications as aws_s3_notifications
-import aws_cdk.aws_s3 as aws_s3
-import aws_cdk.aws_sns as aws_sns
-import aws_cdk.aws_sns_subscriptions as aws_sns_subscriptions
-import aws_cdk.aws_sqs as aws_sqs
-from aws_cdk.aws_lambda_event_sources import SqsEventSource
-import aws_cdk.aws_elasticsearch as aws_elasticsearch
-import aws_cdk.aws_cognito as aws_cognito
 import aws_cdk.aws_elasticloadbalancingv2 as aws_elasticloadbalancingv2
-import aws_cdk.aws_ec2 as aws_ec2
-import aws_cdk.aws_logs as aws_logs
+import aws_cdk.aws_sns_subscriptions as aws_sns_subscriptions
+import aws_cdk.aws_s3_notifications as aws_s3_notifications
+from aws_cdk.aws_lambda_event_sources import SqsEventSource
+import aws_cdk.aws_secretsmanager as aws_secretsmanager
+import aws_cdk.aws_elasticsearch as aws_elasticsearch
 import aws_cdk.aws_cloudtrail as aws_cloudtrail
-import inspect as inspect
-
+import aws_cdk.aws_route53 as aws_route53
+import aws_cdk.aws_cognito as aws_cognito
+import aws_cdk.aws_lambda as aws_lambda
+import aws_cdk.aws_logs as aws_logs
+import aws_cdk.aws_sns as aws_sns
+import aws_cdk.aws_iam as aws_iam
+import aws_cdk.aws_sqs as aws_sqs
+import aws_cdk.aws_ec2 as aws_ec2
 import aws_cdk.aws_ecr as aws_ecr
 import aws_cdk.aws_ecs as aws_ecs
-import aws_cdk.aws_route53 as aws_route53
+import aws_cdk.aws_s3 as aws_s3
+import inspect as inspect
+from aws_cdk import core
 
 
 ###########################################################################
 # References 
 ###########################################################################
-# https://github.com/aws/aws-cdk/issues/7236
-
+# https://?.com
 
 
 class CdkStack(core.Stack):
 
     def __init__(self, scope: core.Construct, id: str, **kwargs) -> None:
         super().__init__(scope, id, **kwargs)
-
-        # The code that defines your stack goes here
-
-        ###########################################################################
-        # AWS SECRETS MANAGER - Templated secret 
-        ###########################################################################
-        # templated_secret = aws_secretsmanager.Secret(self, "TemplatedSecret",
-        #     generate_secret_string=aws_secretsmanager.SecretStringGenerator(
-        #         secret_string_template= "{\"username\":\"cleanbox\"}",
-        #         generate_string_key="password"
-        #     )
-        # )
-        ###########################################################################
-        # CUSTOM CLOUDFORMATION RESOURCE 
-        ###########################################################################
-        # customlambda = aws_lambda.Function(self,'customconfig',
-        # handler='customconfig.on_event',
-        # runtime=aws_lambda.Runtime.PYTHON_3_7,
-        # code=aws_lambda.Code.asset('customconfig'),
-        # )
-
-        # customlambda_statement = aws_iam.PolicyStatement(actions=["events:PutRule"], conditions=None, effect=None, not_actions=None, not_principals=None, not_resources=None, principals=None, resources=["*"], sid=None)
-        # customlambda.add_to_role_policy(statement=customlambda_statement)
-
-        # my_provider = cr.Provider(self, "MyProvider",
-        #     on_event_handler=customlambda,
-        #     # is_complete_handler=is_complete, # optional async "waiter"
-        #     log_retention=aws_logs.RetentionDays.SIX_MONTHS
-        # )
-
-        # CustomResource(self, 'customconfigresource', service_token=my_provider.service_token)
 
 
         ###########################################################################
@@ -114,10 +80,13 @@ class CdkStack(core.Stack):
 
         parse_image_list_file.add_to_role_policy(lambda_supplemental_policy_statement)
         list_objects.add_to_role_policy(lambda_supplemental_policy_statement)
+
+
         ###########################################################################
         # AWS SNS TOPICS 
         ###########################################################################
-        # cloudtrail_log_topic = aws_sns.Topic(self, "cloudtrail_log_topic")
+        # notification_topic = aws_sns.Topic(self, "notification_topic")
+
 
         ###########################################################################
         # ADD AMAZON S3 BUCKET NOTIFICATIONS
@@ -132,44 +101,24 @@ class CdkStack(core.Stack):
         comprehend_queue_iqueue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=comprehend_queue_iqueue)
         comprehend_queue = aws_sqs.Queue(self, "comprehend_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=comprehend_queue_iqueue_dlq)
 
-
         rekognition_queue_iqueue = aws_sqs.Queue(self, "rekognition_queue_iqueue")
         rekognition_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=rekognition_queue_iqueue)
         rekognition_queue = aws_sqs.Queue(self, "rekognition_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=rekognition_queue_dlq)
 
-
         object_queue_iqueue = aws_sqs.Queue(self, "object_queue_iqueue")
         object_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=object_queue_iqueue)
         object_queue = aws_sqs.Queue(self, "object_queue", visibility_timeout=core.Duration.seconds(301), dead_letter_queue=object_queue_dlq)
-
-
-        # sqs_to_elastic_cloud_queue_iqueue = aws_sqs.Queue(self, "sqs_to_elastic_cloud_queue_dlq")
-        # sqs_to_elastic_cloud_queue_dlq = aws_sqs.DeadLetterQueue(max_receive_count=10, queue=sqs_to_elastic_cloud_queue_iqueue)
-        # sqs_to_elastic_cloud_queue = aws_sqs.Queue(self, "sqs_to_elastic_cloud_queue", visibility_timeout=core.Duration.seconds(300), dead_letter_queue=sqs_to_elastic_cloud_queue_dlq)
-
-
-        ###########################################################################
-        # AWS SNS TOPIC SUBSCRIPTIONS
-        ###########################################################################
-        # cloudtrail_log_topic.add_subscription(aws_sns_subscriptions.SqsSubscription(sqs_to_elastic_cloud_queue))
-        # cloudtrail_log_topic.add_subscription(aws_sns_subscriptions.SqsSubscription(sqs_to_elasticsearch_service_queue))
 
         
         ###########################################################################
         # AWS LAMBDA SQS EVENT SOURCE
         ###########################################################################
         get_size_and_store.add_event_source(SqsEventSource(object_queue,batch_size=10))
-        # sqs_to_elasticsearch_service.add_event_source(SqsEventSource(sqs_to_elasticsearch_service_queue,batch_size=10))
 
 
         ###########################################################################
         # AWS ELASTICSEARCH DOMAIN
         ###########################################################################
-
-        ###########################################################################
-        # AWS ELASTICSEARCH DOMAIN ACCESS POLICY 
-        ###########################################################################
-
         s3workflow_domain = aws_elasticsearch.Domain(self, "s3workflow_domain",
             version=aws_elasticsearch.ElasticsearchVersion.V7_1,
             capacity={
@@ -215,25 +164,6 @@ class CdkStack(core.Stack):
                                                             )
 
 
-        parse_image_list_file.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint )
-        parse_image_list_file.add_environment("QUEUEURL", rekognition_queue.queue_url )
-        parse_image_list_file.add_environment("DEBUG", "False" )
-        parse_image_list_file.add_environment("BUCKET", "-" )
-        parse_image_list_file.add_environment("KEY", "-" )
-
-        get_size_and_store.add_environment("QUEUEURL", object_queue.queue_url)
-        get_size_and_store.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint)
-        # sqs_to_elastic_cloud.add_environment("ELASTIC_CLOUD_PASSWORD", "-")
-        # sqs_to_elastic_cloud.add_environment("ELASTIC_CLOUD_USERNAME", "-")
-        # sqs_to_elastic_cloud.add_environment("QUEUEURL", sqs_to_elastic_cloud_queue.queue_url )
-        # sqs_to_elastic_cloud.add_environment("DEBUG", "False" )
-
-
-
-        ######################################################################################################################################################
-
-
-
         ###########################################################################
         # AMAZON VPC  
         ###########################################################################
@@ -241,13 +171,16 @@ class CdkStack(core.Stack):
 
 
         ###########################################################################
+        # AMAZON ECS CLUSTER 
+        ###########################################################################
+        cluster = aws_ecs.Cluster(self, "s3", vpc=vpc)
+
+
+        ###########################################################################
         # AMAZON ECS Repositories  
         ###########################################################################
-        # get_repository = aws_ecs.IRepository(self, "get_repository", image_scan_on_push=True, removal_policy=aws_cdk.core.RemovalPolicy("DESTROY") )
-        # put_repository = aws_ecs.IRepository(self, "put_repository", image_scan_on_push=True, removal_policy=aws_cdk.core.RemovalPolicy("DESTROY") )
         rekognition_repository = aws_ecr.Repository(self, "rekognition_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
         put_repository = aws_ecr.Repository(self, "put_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
-        xray_repository = aws_ecr.Repository(self, "xray_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
 
 
         ###########################################################################
@@ -310,37 +243,48 @@ class CdkStack(core.Stack):
                                                                         )
 
 
-
-
         ###########################################################################
         # AMAZON ECS Images 
         ###########################################################################
         rekognition_ecr_image = aws_ecs.EcrImage(repository=rekognition_repository, tag="latest")
         comprehend_ecr_image = aws_ecs.EcrImage(repository=put_repository, tag="latest")
-        # xray_repository_ecr_image = aws_ecs.EcrImage(repository=xray_repository, tag="latest")
+
+
+        ###########################################################################
+        # ENVIRONMENT VARIABLES 
+        ###########################################################################
         environment_variables = {}
         environment_variables["COMPREHEND_QUEUE"] = comprehend_queue.queue_url
         environment_variables["REKOGNITION_QUEUE"] = rekognition_queue.queue_url
         environment_variables["IMAGES_BUCKET"] = images_bucket.bucket_name
         environment_variables["ELASTICSEARCH_HOST"] = s3workflow_domain.domain_endpoint
         
+        parse_image_list_file.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint )
+        parse_image_list_file.add_environment("QUEUEURL", rekognition_queue.queue_url )
+        parse_image_list_file.add_environment("DEBUG", "False" )
+        parse_image_list_file.add_environment("BUCKET", "-" )
+        parse_image_list_file.add_environment("KEY", "-" )
+
+        get_size_and_store.add_environment("QUEUEURL", object_queue.queue_url)
+        get_size_and_store.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint)
+
+
+        ###########################################################################
+        # ECS Log Drivers 
+        ###########################################################################
         rekognition_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="s3workflow", log_retention=aws_logs.RetentionDays("ONE_DAY"))
         comprehend_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="s3workflow", log_retention=aws_logs.RetentionDays("ONE_DAY"))
-        # xray_task_log_driver = aws_ecs.LogDriver.aws_logs(stream_prefix="S3LoadTest", log_retention=aws_logs.RetentionDays("ONE_WEEK"))
 
 
+        ###########################################################################
+        # ECS Task Definitions 
+        ###########################################################################
         rekognition_task_definition.add_container("rekognition_task_definition", 
                                                     image=rekognition_ecr_image, 
                                                     memory_reservation_mib=1024,
                                                     environment=environment_variables,
                                                     logging=rekognition_task_log_driver
                                                     )
-        # get_task_definition.add_container("get_task_definition_xray", 
-        #                                             image=xray_repository_ecr_image, 
-        #                                             memory_reservation_mib=1024,
-        #                                             environment=environment_variables,
-        #                                             logging=xray_task_log_driver
-        #                                             )
 
         comprehend_task_definition.add_container("comprehend_task_definition", 
                                                     image=comprehend_ecr_image, 
@@ -348,18 +292,6 @@ class CdkStack(core.Stack):
                                                     environment=environment_variables,
                                                     logging=comprehend_task_log_driver
                                                     )
-        # put_task_definition.add_container("put_task_definition_xray", 
-        #                                             image=xray_repository_ecr_image, 
-        #                                             memory_reservation_mib=1024,
-        #                                             environment=environment_variables,
-        #                                             logging=xray_task_log_driver
-        #                                             )
-
-
-        ###########################################################################
-        # AMAZON ECS CLUSTER 
-        ###########################################################################
-        cluster = aws_ecs.Cluster(self, "s3", vpc=vpc)
 
 
         ###########################################################################
