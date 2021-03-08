@@ -273,8 +273,8 @@ def lambda_handler(event, context):
         number_of_records_in_event = len(event['Records'])
         record_number = 1            
         for Record in event['Records']:
-            Record = Record['body']
-            logger.info("Record['body']=" + Record)
+            # Record = Record['body']
+            logger.info("Record=" + Record)
             print("processing record {} of {}".format(record_number, number_of_records_in_event))
             send_object_to_elasticsearch(Record)
             record_number += 1
