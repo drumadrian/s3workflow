@@ -261,7 +261,6 @@ def lambda_handler(event, context):
     logger.debug("\n Lambda event={0}\n".format(json.dumps(event)))
 
     if context == "-": #RUNNING A LOCAL EXECUTION 
-        # number_of_messages_in_event = len(event['Messages'])
         number_of_messages_in_event = len(event)
         message_number = 1
         for Message in event:
@@ -274,9 +273,10 @@ def lambda_handler(event, context):
         number_of_records_in_event = len(event['Records'])
         record_number = 1            
         for Record in event['Records']:
-            logger.info("Record=" + Record)
+            Record = Record['body']
+            logger.info("Record['body']=" + Record)
             print("processing record {} of {}".format(record_number, number_of_records_in_event))
-            send_object_to_elasticsearch(json_data_from_local_file)
+            send_object_to_elasticsearch(Record)
             record_number += 1
 
 
