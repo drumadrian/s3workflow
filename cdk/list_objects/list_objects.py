@@ -56,30 +56,6 @@ s3_client = boto3.client('s3')
 
 
 
-def get_matching_s3_keys_v1(bucket, prefix='', suffix=''):
-    """
-    Generate the keys in an S3 bucket.
-
-    :param bucket: Name of the S3 bucket.
-    :param prefix: Only fetch keys that start with this prefix (optional).
-    :param suffix: Only fetch keys that end with this suffix (optional).
-    """
-    keys = []
-    kwargs = {'Bucket': bucket, 'Prefix': prefix}
-    while True:
-        resp = s3_client.list_objects_v2(**kwargs)
-        for obj in resp['Contents']:
-            key = obj['Key']
-            if key.endswith(suffix):
-                keys.append(obj['Key'])
-        try:
-            kwargs['ContinuationToken'] = resp['NextContinuationToken']
-        except KeyError:
-            break
-
-    return keys
-
-
 
 ################################################################################################################
 #   List files from S3  
@@ -107,23 +83,6 @@ def get_matching_s3_keys(bucket, prefix='', suffix=''):
             break
 
     return objects
-
-def get_all_s3_keys(bucket):
-    """Get a list of all keys in an S3 bucket."""
-    keys = []
-
-    kwargs = {'Bucket': bucket}
-    while True:
-        resp = s3.list_objects_v2(**kwargs)
-        for obj in resp['Contents']:
-            keys.append(obj['Key'])
-
-        try:
-            kwargs['ContinuationToken'] = resp['NextContinuationToken']
-        except KeyError:
-            break
-
-    return keys
 
 
 ################################################################################################################
@@ -175,13 +134,15 @@ def lambda_handler(event, context):
         object_list = get_matching_s3_keys(S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
         for s3_object in object_list:
             logger.debug(s3_object)
-            # time.sleep(3)
             enqueue_object(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
-            # continue
-            # send_object_to_elasticsearch('')
 
     else:   #RUNNING A LAMBDA INVOCATION
         logger.info("RUNNING A LAMBDA INVOCATION")
+        object_list = get_matching_s3_keys(S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
+        for s3_object in object_list:
+            logger.debug(s3_object)
+            enqueue_object(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
+
 
 ################################################################################################################
 # LOCAL TESTING and DEBUGGING  
