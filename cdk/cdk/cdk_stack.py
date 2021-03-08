@@ -264,7 +264,6 @@ class CdkStack(core.Stack):
         parse_image_list_file.add_environment("DEBUG", "False" )
         parse_image_list_file.add_environment("BUCKET", "-" )
         parse_image_list_file.add_environment("KEY", "-" )
-
         
         list_objects.add_environment("QUEUEURL", object_queue.queue_url)
         list_objects.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint)
