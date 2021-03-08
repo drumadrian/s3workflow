@@ -265,9 +265,16 @@ class CdkStack(core.Stack):
         parse_image_list_file.add_environment("BUCKET", "-" )
         parse_image_list_file.add_environment("KEY", "-" )
 
+        
+        list_objects.add_environment("QUEUEURL", object_queue.queue_url)
+        list_objects.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint)
+        list_objects.add_environment("S3_BUCKET_NAME", images_bucket.bucket_name)
+        list_objects.add_environment("S3_BUCKET_PREFIX", "images/")
+        list_objects.add_environment("S3_BUCKET_SUFFIX", "")
+        list_objects.add_environment("LOGGING_LEVEL", "INFO")
+
         get_size_and_store.add_environment("QUEUEURL", object_queue.queue_url)
         get_size_and_store.add_environment("ELASTICSEARCH_HOST", s3workflow_domain.domain_endpoint)
-        
         get_size_and_store.add_environment("S3_BUCKET_NAME", images_bucket.bucket_name)
         get_size_and_store.add_environment("S3_BUCKET_PREFIX", "images/")
         get_size_and_store.add_environment("S3_BUCKET_SUFFIX", "")
