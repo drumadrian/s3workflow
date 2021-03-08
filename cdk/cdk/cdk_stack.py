@@ -74,7 +74,7 @@ class CdkStack(core.Stack):
         ###########################################################################
         lambda_supplemental_policy_statement = aws_iam.PolicyStatement(
             effect=aws_iam.Effect.ALLOW,
-            actions=["s3:Get*","s3:Head*","s3:List*","firehose:*","es:*"],
+            actions=["s3:Get*","s3:Head*","s3:List*""sqs:*","es:*"],
             resources=["*"]
             )
 
