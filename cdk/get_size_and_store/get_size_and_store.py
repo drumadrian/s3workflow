@@ -264,7 +264,7 @@ def lambda_handler(event, context):
         number_of_messages_in_event = len(event)
         message_number = 1
         for Message in event:
-            print("processing message {} of {}".format(message_number, number_of_messages_in_event))
+            logger.info("processing message {} of {}".format(message_number, number_of_messages_in_event))
             send_object_to_elasticsearch(Message)
             message_number += 1
         # delete_messages()
@@ -273,9 +273,7 @@ def lambda_handler(event, context):
         number_of_records_in_event = len(event['Records'])
         record_number = 1            
         for Record in event['Records']:
-            # Record = Record['body']
-            logger.info("Record=" + Record)
-            print("processing record {} of {}".format(record_number, number_of_records_in_event))
+            logger.info("processing record {} of {}".format(record_number, number_of_records_in_event))
             send_object_to_elasticsearch(Record)
             record_number += 1
 
