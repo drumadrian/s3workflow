@@ -193,8 +193,13 @@ def send_object_to_elasticsearch(Message):
     # "bucket_suffix": ""
     # \n}'
     ################################################
-    Body = Message['Body']
+    
+    if "Body" in Message.keys:
+        Body = Message['Body']
+    else:
+        Body = Message['body']                      # As provided when invoked in the Lambda service
     json_Body = json.loads(Body)
+
     bucket_name = json_Body['bucket_name']
     bucket_prefix = json_Body['bucket_prefix']
     key = json_Body['Key']
