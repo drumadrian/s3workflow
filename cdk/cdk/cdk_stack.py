@@ -80,6 +80,7 @@ class CdkStack(core.Stack):
 
         parse_image_list_file.add_to_role_policy(lambda_supplemental_policy_statement)
         list_objects.add_to_role_policy(lambda_supplemental_policy_statement)
+        get_size_and_store.add_to_role_policy(lambda_supplemental_policy_statement)
 
 
         ###########################################################################
