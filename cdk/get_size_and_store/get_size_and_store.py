@@ -194,7 +194,7 @@ def send_object_to_elasticsearch(Message):
     # \n}'
     ################################################
     
-    if "Body" in Message.keys:
+    if "Body" in Message.keys():
         Body = Message['Body']
     else:
         Body = Message['body']                      # As provided when invoked in the Lambda service
