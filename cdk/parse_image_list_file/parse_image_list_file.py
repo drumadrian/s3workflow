@@ -22,188 +22,6 @@ import gzip
 #   References
 ################################################################################################################
 # https://alexwlchan.net/2017/07/listing-s3-keys/
-
-
-################################################################################################################
-#   Config
-################################################################################################################
-region = os.environ['AWS_REGION']
-QUEUEURL = os.environ['QUEUEURL']
-S3_BUCKET_NAME = os.environ['S3_BUCKET_NAME']
-S3_BUCKET_PREFIX = os.environ['S3_BUCKET_PREFIX']
-S3_BUCKET_SUFFIX = os.environ['S3_BUCKET_SUFFIX']
-ELASTICSEARCH_HOST = os.environ['ELASTICSEARCH_HOST']
-logging_level_name = os.getenv('LOGGING_LEVEL', default = 'INFO')
-logging_level = logging._nameToLevel[logging_level_name]
-logging.basicConfig(stream=sys.stdout, level=logging_level)
-logger = logging.getLogger()
-logger.setLevel(logging_level)
-
-sqs_client = boto3.client('sqs')
-s3_client = boto3.client('s3')
-
-# Connect to Elasticsearch Service Domain
-# service = 'es'
-# credentials = boto3.Session().get_credentials()
-# awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, service, session_token=credentials.token)
-# elasticsearchclient = Elasticsearch(
-#     hosts = [{'host': ELASTICSEARCH_HOST, 'port': 443}],
-#     http_auth = awsauth,
-#     use_ssl = True,
-#     verify_certs = True,
-#     connection_class = RequestsHttpConnection
-# )
-
-
-
-
-################################################################################################################
-#   List files from S3  
-################################################################################################################
-def get_matching_s3_keys(bucket, prefix='', suffix=''):
-    """
-    Generate the keys in an S3 bucket.
-
-    :param bucket: Name of the S3 bucket.
-    :param prefix: Only fetch keys that start with this prefix (optional).
-    :param suffix: Only fetch keys that end with this suffix (optional).
-    """
-    objects = []
-    kwargs = {'Bucket': bucket, 'Prefix': prefix}
-    while True:
-        resp = s3_client.list_objects_v2(**kwargs)
-        for obj in resp['Contents']:
-            key = obj['Key']
-            if key.endswith(suffix):
-                objects.append(obj)
-                # keys.append(obj['Key'])
-        try:
-            kwargs['ContinuationToken'] = resp['NextContinuationToken']
-        except KeyError:
-            break
-
-    return objects
-
-
-################################################################################################################
-#   enqueue a message onto the SQS queue
-################################################################################################################
-def enqueue_object(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX):
-    # payload ={
-#     "ETag": "\"51ec3079c61643d5e3e1b0b390141caf\"",
-#     "Key": "images/000030_22:21:09.000030_diagram.png",
-#     "LastModified": "2021-03-07 06:34:53+00:00",
-#     "Size": 98831,
-#     "StorageClass": "STANDARD",
-#     "bucket_name": "s3workflow-imagesbucketd1ef9a17-16f4rwi6wz5w7",
-#     "bucket_prefix": "images/",
-#     "bucket_suffix": ""
-# }
-    
-
-    s3_object['bucket_name'] = S3_BUCKET_NAME
-    s3_object['bucket_prefix'] = S3_BUCKET_PREFIX
-    s3_object['bucket_suffix'] = S3_BUCKET_SUFFIX
-    str_payload = json.dumps(s3_object, indent=4, sort_keys=True, default=str)
-    
-    response = sqs_client.send_message(
-        QueueUrl=QUEUEURL,
-        DelaySeconds=1,
-        # MessageAttributes=,
-        MessageBody=str_payload        
-        # MessageBody=(
-        #     'Information about current NY Times fiction bestseller for '
-        #     'week of 12/11/2016.'
-        # )
-    )
-    logger.debug("sqs_client.send_message() to SQS Successful\n\n response={0}".format(response))
-    logger.info("Sent MessageBody={0}".format(str_payload))
-    # print(response['MessageId'])
-
-
-################################################################################################################
-################################################################################################################
-#   LAMBDA HANDLER 
-################################################################################################################
-################################################################################################################
-def lambda_handler(event, context):
-    logger.info("\n Lambda event={0}\n".format(json.dumps(event)))
-
-    if context == "-": #RUNNING A LOCAL EXECUTION
-        image_file_contents = get_image_file_contents(S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
-        for line in image_file_contents:
-            logger.debug(line)
-            enqueue_object(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
-
-    else:   #RUNNING A LAMBDA INVOCATION
-        image_file_contents = get_image_file_contents(S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
-        for line in image_file_contents:
-            logger.debug(line)
-            enqueue_object(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
-
-
-################################################################################################################
-# LOCAL TESTING and DEBUGGING  
-################################################################################################################
-if __name__ == "__main__":
-    context = "-"
-    # for x in range(0, 300):
-    # while True:
-    event = {}
-    logger.info("\n event={0}\n".format(json.dumps(event)))
-    lambda_handler(event, context)
-
-
-
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-
-
-
-from __future__ import print_function
-from elasticsearch import Elasticsearch, RequestsHttpConnection
-from requests_aws4auth import AWS4Auth
-from botocore.exceptions import ClientError
-from elasticsearch import Elasticsearch
-import datetime as datetime
-import botocore
-import logging
-import boto3
-import base64
-import gzip
-import time
-import json
-import io
-import csv
-import os
-import gzip
-
-
-################################################################################################################
-#   References
-################################################################################################################
 # https://stackoverflow.com/questions/37703634/how-to-import-a-text-file-on-aws-s3-into-pandas-without-writing-to-disk
 # https://docs.aws.amazon.com/AmazonS3/latest/dev/notification-content-structure.html
 # https://elasticsearch-py.readthedocs.io/en/7.10.0/
@@ -212,17 +30,21 @@ import gzip
 # https://www.geeksforgeeks.org/python-ways-to-remove-a-key-from-dictionary/
 # https://www.geeksforgeeks.org/python-check-if-a-given-object-is-list-or-not/
 
+
 ################################################################################################################
 #   Config
 ################################################################################################################
 region = os.environ['AWS_REGION']
 QUEUEURL = os.environ['QUEUEURL']
 ELASTICSEARCH_HOST = os.environ['ELASTICSEARCH_HOST']
-debug = os.getenv('DEBUG', False) in (True, 'True')
-
-file_path = '/tmp/record.json.gz'
+logging_level_name = os.getenv('LOGGING_LEVEL', default = 'INFO')
+logging_level = logging._nameToLevel[logging_level_name]
+logging.basicConfig(stream=sys.stdout, level=logging_level)
+logger = logging.getLogger()
+logger.setLevel(logging_level)
 sqs_client = boto3.client('sqs')
-s3_client = boto3.resource('s3')
+s3_client = boto3.client('s3')
+file_path = '/tmp/image_list_file.txt'
 
 # Connect to Elasticsearch Service Domain
 service = 'es'
@@ -235,114 +57,17 @@ elasticsearchclient = Elasticsearch(
     verify_certs = True,
     connection_class = RequestsHttpConnection
 )
+################################################################################################################
+################################################################################################################
 
 
-def get_elasticsearch_time(time_from_record):
-    # Have:
-    # [23/Nov/2020:07:43:07
-    # Need:
-    # 2018-04-23T10:45:13.899Z
-    # Got:
-    # 2020-Nov-23T07:43:07Z
-    # 2021-Jan-1T06:23:08Z
 
-
-    if debug:
-        print('time_from_record=' + time_from_record)
-
-    time_from_record_after_replacement = time_from_record.replace('[', '')
-
-
-    if debug:
-        print('time_from_record_after_replacement=' + time_from_record_after_replacement)
-
-    time_from_record_list = time_from_record_after_replacement.split(':')
-    date_from_record = time_from_record_list[0]
-    date_from_record_list = date_from_record.split("/")
-
-    day = date_from_record_list[0]
-    month = date_from_record_list[1]
-    year = date_from_record_list[2]
-    hour = time_from_record_list[1]
-    minutes = time_from_record_list[2]
-    seconds = time_from_record_list[3]
-
-    # year = time_from_record[8:12]
-    # month = time_from_record[4:7]
-    # day = time_from_record[1:3]
-    # hour = time_from_record[13:15]
-    # minutes = time_from_record[16:18]
-    # seconds = time_from_record[19:21]
-
-    # convert month name to month number
-    datetime_object = datetime.datetime.strptime(month, "%b")
-    month_number = datetime_object.month
-    month_number_string = str(month_number)
-
-    if len(day) == 1:
-        day = "0" + day
-    if len(month_number_string) == 1:
-        month_number_string = "0" + month_number_string
-
-
-    if debug:
-        print(day)
-        print(month_number_string)
-        print(year)
-        print(hour)
-        print(minutes)
-        print(seconds)
-
-    newtime = str( year + '-' + month_number_string + '-' + day + 'T' + hour + ':' + minutes + ':' + seconds + 'Z' )
-
-    if debug:
-        print('newtime=' + newtime)
-
-    return newtime
-
-
-def get_sqs_message(QUEUEURL, sqs_client):
-    ###### Example of string data that was sent:#########
-    # payload = { 
-    # "bucketname": bucketname, 
-    # "s3_file_name": s3_file_name
-    # }
-    ################################################
-
-    receive_message_response = dict()
-    while 'Messages' not in receive_message_response:
-        receive_message_response = sqs_client.receive_message(
-            QueueUrl=QUEUEURL,
-            # AttributeNames=[
-            #     'All'|'Policy'|'VisibilityTimeout'|'MaximumMessageSize'|'MessageRetentionPeriod'|'ApproximateNumberOfMessages'|'ApproximateNumberOfMessagesNotVisible'|'CreatedTimestamp'|'LastModifiedTimestamp'|'QueueArn'|'ApproximateNumberOfMessagesDelayed'|'DelaySeconds'|'ReceiveMessageWaitTimeSeconds'|'RedrivePolicy'|'FifoQueue'|'ContentBasedDeduplication'|'KmsMasterKeyId'|'KmsDataKeyReusePeriodSeconds',
-            # ],
-            # MessageAttributeNames=[
-            #     'string',
-            # ],
-            MaxNumberOfMessages=1
-            # VisibilityTimeout=123,
-            # WaitTimeSeconds=123,
-            # ReceiveRequestAttemptId='string'
-        )
-        if 'Messages' in receive_message_response:
-            number_of_messages = len(receive_message_response['Messages'])
-            if debug:
-                print("\n received {0} messages!! ....Processing message \n".format(number_of_messages))
-            break
-        else:
-            print("\n received 0 messages!! waiting.....5 seconds before retrying \n")
-            time.sleep(5)
-            continue
-        
-
-    ReceiptHandle = receive_message_response['Messages'][0]['ReceiptHandle']
-    delete_message_response = sqs_client.delete_message(
-    QueueUrl=QUEUEURL,
-    ReceiptHandle=ReceiptHandle
-    )
-    if debug:
-        print("delete_message_response = {0}".format(delete_message_response))
-    return receive_message_response
+def confirm_image_file_name(lambda_event):
+    object_name = lambda_event['Records'][0]['s3']['object']['key']
+    if object_name == 'image_list_file.txt':
+        return True
+    else:
+        return False
 
 
 def retrieve_s3_file(message):
@@ -411,7 +136,8 @@ def retrieve_s3_file(message):
             raise
 
 
-def get_json_data_from_local_file():
+
+def retrieve_s3_file_list():
     ################################################################################################################
     #   Get the data from S3 in JSON format
     ################################################################################################################
@@ -430,21 +156,106 @@ def get_json_data_from_local_file():
     return json_data
 
 
-    ################################################################################################################
-    # Python program to convert a list to string 
-    ################################################################################################################
-def listToString(s):  
-    # initialize an empty string 
-    str1 = ""  
-    
-    # traverse in the string   
-    for ele in s:  
-        str1 += ele   
-        str1 += ", "   
-    
-    # return string   
-    return str1  
         
+
+################################################################################################################
+#   enqueue a message onto the SQS queue
+################################################################################################################
+def enqueue_object(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX):
+    # payload ={
+#     "ETag": "\"51ec3079c61643d5e3e1b0b390141caf\"",
+#     "Key": "images/000030_22:21:09.000030_diagram.png",
+#     "LastModified": "2021-03-07 06:34:53+00:00",
+#     "Size": 98831,
+#     "StorageClass": "STANDARD",
+#     "bucket_name": "s3workflow-imagesbucketd1ef9a17-16f4rwi6wz5w7",
+#     "bucket_prefix": "images/",
+#     "bucket_suffix": ""
+# }
+
+    s3_object['bucket_name'] = S3_BUCKET_NAME
+    s3_object['bucket_prefix'] = S3_BUCKET_PREFIX
+    s3_object['bucket_suffix'] = S3_BUCKET_SUFFIX
+    str_payload = json.dumps(s3_object, indent=4, sort_keys=True, default=str)
+    
+    response = sqs_client.send_message(
+        QueueUrl=QUEUEURL,
+        DelaySeconds=1,
+        # MessageAttributes=,
+        MessageBody=str_payload        
+        # MessageBody=(
+        #     'Information about current NY Times fiction bestseller for '
+        #     'week of 12/11/2016.'
+        # )
+    )
+    logger.debug("sqs_client.send_message() to SQS Successful\n\n response={0}".format(response))
+    logger.info("Sent MessageBody={0}".format(str_payload))
+    # print(response['MessageId'])
+
+
+
+def get_elasticsearch_time(time_from_record):
+    # Have:
+    # [23/Nov/2020:07:43:07
+    # Need:
+    # 2018-04-23T10:45:13.899Z
+    # Got:
+    # 2020-Nov-23T07:43:07Z
+    # 2021-Jan-1T06:23:08Z
+
+
+    if debug:
+        print('time_from_record=' + time_from_record)
+
+    time_from_record_after_replacement = time_from_record.replace('[', '')
+
+
+    if debug:
+        print('time_from_record_after_replacement=' + time_from_record_after_replacement)
+
+    time_from_record_list = time_from_record_after_replacement.split(':')
+    date_from_record = time_from_record_list[0]
+    date_from_record_list = date_from_record.split("/")
+
+    day = date_from_record_list[0]
+    month = date_from_record_list[1]
+    year = date_from_record_list[2]
+    hour = time_from_record_list[1]
+    minutes = time_from_record_list[2]
+    seconds = time_from_record_list[3]
+
+    # year = time_from_record[8:12]
+    # month = time_from_record[4:7]
+    # day = time_from_record[1:3]
+    # hour = time_from_record[13:15]
+    # minutes = time_from_record[16:18]
+    # seconds = time_from_record[19:21]
+
+    # convert month name to month number
+    datetime_object = datetime.datetime.strptime(month, "%b")
+    month_number = datetime_object.month
+    month_number_string = str(month_number)
+
+    if len(day) == 1:
+        day = "0" + day
+    if len(month_number_string) == 1:
+        month_number_string = "0" + month_number_string
+
+
+    if debug:
+        print(day)
+        print(month_number_string)
+        print(year)
+        print(hour)
+        print(minutes)
+        print(seconds)
+
+    newtime = str( year + '-' + month_number_string + '-' + day + 'T' + hour + ':' + minutes + ':' + seconds + 'Z' )
+
+    if debug:
+        print('newtime=' + newtime)
+
+    return newtime
 
 
 def send_object_to_elasticsearch(json_data_from_local_file):
@@ -536,35 +347,192 @@ def send_object_to_elasticsearch(json_data_from_local_file):
 
     print('COMPLETED: Putting {0} records into the Elasticsearch Service Domain one at a time'.format( len(json_data_from_local_file) ))
 
+
+
+
+
 ################################################################################################################
 ################################################################################################################
 #   LAMBDA HANDLER 
 ################################################################################################################
 ################################################################################################################
 def lambda_handler(event, context):
-    if debug:
-        print("\n Lambda event={0}\n".format(json.dumps(event)))
+    logger.info("\n Lambda event={0}\n".format(json.dumps(event)))
+    is_image_file = confirm_image_file_name(event)
+    if is_image_file:
+        retrieve_s3_file(event)
+    else:
+        logger.error("The input event does not contain image_list_file.txt")
+        exit()
+    
+    file_list = retrieve_s3_file_list()
+    for each file in file_list: 
+        enqueue_objects(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
+        send_object_to_elasticsearch()
 
-    if context == "-": #RUNNING A LOCAL EXECUTION 
-        number_of_messages_in_event = len(event['Messages'])
-        message_number = 1
-        for Message in event['Messages']:
-            print("processing message {} of {}".format(message_number, number_of_messages_in_event))
-            retrieve_s3_file(Message)
-            json_data_from_local_file = get_json_data_from_local_file()
-            send_object_to_elasticsearch(json_data_from_local_file)
-            message_number += 1
-    else:   #RUNNING A LAMBDA INVOCATION
-        number_of_records_in_event = len(event['Records'])
-        record_number = 1            
-        for Record in event['Records']:
-            print("processing record {} of {}".format(record_number, number_of_records_in_event))
-            retrieve_s3_file(Record)
-            json_data_from_local_file = get_json_data_from_local_file()
-            send_object_to_elasticsearch(json_data_from_local_file)
-            record_number += 1
 ################################################################################################################
 ################################################################################################################
 #   LAMBDA HANDLER 
 ################################################################################################################
 ################################################################################################################
+
+
+################################################################################################################
+# LOCAL TESTING and DEBUGGING  
+################################################################################################################
+if __name__ == "__main__":
+    context = "-"
+    event = {
+    "Records": [
+        {
+        "eventVersion": "2.0",
+        "eventSource": "aws:s3",
+        "awsRegion": "us-west-2",
+        "eventTime": "1970-01-01T00:00:00.000Z",
+        "eventName": "ObjectCreated:Put",
+        "userIdentity": {
+            "principalId": "EXAMPLE"
+        },
+        "requestParameters": {
+            "sourceIPAddress": "127.0.0.1"
+        },
+        "responseElements": {
+            "x-amz-request-id": "EXAMPLE123456789",
+            "x-amz-id-2": "EXAMPLE123/5678abcdefghijklambdaisawesome/mnopqrstuvwxyzABCDEFGH"
+        },
+        "s3": {
+            "s3SchemaVersion": "1.0",
+            "configurationId": "testConfigRule",
+            "bucket": {
+            "name": "s3workflow-imagesbucketd1ef9a17-16f4rwi6wz5w7",
+            "ownerIdentity": {
+                "principalId": "EXAMPLE"
+            },
+            "arn": "arn:aws:s3:::example-bucket"
+            },
+            "object": {
+            "key": "images/000000_04:16:32.000000_diagram.png",
+            "size": 1024,
+            "eTag": "0123456789abcdef0123456789abcdef",
+            "sequencer": "0A1B2C3D4E5F678901"
+            }
+        }
+        }
+    ]
+    }
+    lambda_handler(event, context)
+
+
+
+
+
+
+
+
+
+
+
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+################################################################################################################
+
+
+    ################################################################################################################
+    # Python program to convert a list to string 
+    ################################################################################################################
+# def listToString(s):  
+#     # initialize an empty string 
+#     str1 = ""  
+    
+#     # traverse in the string   
+#     for ele in s:  
+#         str1 += ele   
+#         str1 += ", "   
+    
+#     # return string   
+#     return str1  
+
+
+
+
+
+    # if context == "-": #RUNNING A LOCAL EXECUTION 
+    #     number_of_messages_in_event = len(event['Messages'])
+    #     message_number = 1
+    #     for Message in event['Messages']:
+    #         print("processing message {} of {}".format(message_number, number_of_messages_in_event))
+    #         retrieve_s3_file(Message)
+    #         json_data_from_local_file = get_json_data_from_local_file()
+    #         send_object_to_elasticsearch(json_data_from_local_file)
+    #         message_number += 1
+    # else:   #RUNNING A LAMBDA INVOCATION
+    #     number_of_records_in_event = len(event['Records'])
+    #     record_number = 1            
+    #     for Record in event['Records']:
+    #         print("processing record {} of {}".format(record_number, number_of_records_in_event))
+    #         retrieve_s3_file(Record)
+    #         json_data_from_local_file = get_json_data_from_local_file()
+    #         send_object_to_elasticsearch(json_data_from_local_file)
+    #         record_number += 1
+
+
+
+
+
+
+# def get_sqs_message(QUEUEURL, sqs_client):
+#     ###### Example of string data that was sent:#########
+#     # payload = { 
+#     # "bucketname": bucketname, 
+#     # "s3_file_name": s3_file_name
+#     # }
+#     ################################################
+
+#     receive_message_response = dict()
+#     while 'Messages' not in receive_message_response:
+#         receive_message_response = sqs_client.receive_message(
+#             QueueUrl=QUEUEURL,
+#             # AttributeNames=[
+#             #     'All'|'Policy'|'VisibilityTimeout'|'MaximumMessageSize'|'MessageRetentionPeriod'|'ApproximateNumberOfMessages'|'ApproximateNumberOfMessagesNotVisible'|'CreatedTimestamp'|'LastModifiedTimestamp'|'QueueArn'|'ApproximateNumberOfMessagesDelayed'|'DelaySeconds'|'ReceiveMessageWaitTimeSeconds'|'RedrivePolicy'|'FifoQueue'|'ContentBasedDeduplication'|'KmsMasterKeyId'|'KmsDataKeyReusePeriodSeconds',
+#             # ],
+#             # MessageAttributeNames=[
+#             #     'string',
+#             # ],
+#             MaxNumberOfMessages=1
+#             # VisibilityTimeout=123,
+#             # WaitTimeSeconds=123,
+#             # ReceiveRequestAttemptId='string'
+#         )
+#         if 'Messages' in receive_message_response:
+#             number_of_messages = len(receive_message_response['Messages'])
+#             if debug:
+#                 print("\n received {0} messages!! ....Processing message \n".format(number_of_messages))
+#             break
+#         else:
+#             print("\n received 0 messages!! waiting.....5 seconds before retrying \n")
+#             time.sleep(5)
+#             continue
+        
+
+#     ReceiptHandle = receive_message_response['Messages'][0]['ReceiptHandle']
+#     delete_message_response = sqs_client.delete_message(
+#     QueueUrl=QUEUEURL,
+#     ReceiptHandle=ReceiptHandle
+#     )
+#     if debug:
+#         print("delete_message_response = {0}".format(delete_message_response))
+#     return receive_message_response
+
+
+
+
+
