@@ -43,8 +43,11 @@ logging.basicConfig(stream=sys.stdout, level=logging_level)
 logger = logging.getLogger()
 logger.setLevel(logging_level)
 sqs_client = boto3.client('sqs')
-s3_client = boto3.client('s3')
-file_path = '/tmp/image_list_file.txt'
+# s3_client = boto3.client('s3')
+s3_resource = boto3.resource('s3')
+file_name = "image_list_file.txt"
+s3_file_key = "images/" + file_name
+local_file_path = "/tmp/" + file_name
 
 # Connect to Elasticsearch Service Domain
 service = 'es'
@@ -63,8 +66,8 @@ elasticsearchclient = Elasticsearch(
 
 
 def confirm_image_file_name(lambda_event):
-    object_name = lambda_event['Records'][0]['s3']['object']['key']
-    if object_name == 'image_list_file.txt':
+    event_s3_file_key = lambda_event['Records'][0]['s3']['object']['key']
+    if event_s3_file_key == s3_file_key:
         return True
     else:
         return False
@@ -74,113 +77,63 @@ def retrieve_s3_file(message):
     ################################################################################################################
     #   Unpack the message from SQS and get bucket name and object name
     ################################################################################################################
-    if debug:
-        print("\nmessage = {0}".format(message))
-        print("\ntype(message) = {0}\n".format(type(message)))
 
-    if "body" in message:
-        message_body = message['body']
-        if debug:
-            print("\nmessage_body = {0}".format(message_body))
-            print("\ntype(message_body) = {0}\n".format(type(message_body)))
-    else: 
-        message_body = message['Body']
-        if debug:
-            print("\nmessage_body = {0}".format(message_body))
-            print("\ntype(message_body) = {0}\n".format(type(message_body)))
-
-    message_body_dict = json.loads(message_body)
-    if debug:
-        print("\nmessage_body_dict = {0}".format(message_body_dict))
-        print("\ntype(message_body_dict) = {0}\n".format(type(message_body_dict)))
-
-    message_within_message_body_str = message_body_dict['Message']
-    if debug:
-        print("\nmessage_within_message_body_str = {0}".format(message_within_message_body_str))
-        print("\ntype(message_within_message_body_str) = {0}\n".format(type(message_within_message_body_str)))
-
-    message_within_message_body = json.loads(message_within_message_body_str)
-    if debug:
-        print("\nmessage_within_message_body = {0}".format(message_within_message_body))
-        print("\ntype(message_within_message_body) = {0}\n".format(type(message_within_message_body)))
-
+    job_data = {}
     try:
-        s3_notification_records = message_within_message_body['Records']
+        s3_notification_records = message['Records']
     except:
-        print("Failed to retrieve \'Records\' from message_within_message_body! ")
-        if message_within_message_body['Event'] == "s3:TestEvent":
-            print("Found Amazon S3 notification TestEvent")               
-            print("TestEvent=\n{0}".format(message_within_message_body["Event"]) )                     #https://docs.aws.amazon.com/AmazonS3/latest/dev/notification-content-structure.html
-            raise Exception("....Skipping message")
-
-    if debug:
-        print("\ns3_notification_records = {0}".format(s3_notification_records))
+        logger.error("Failed to retrieve \'Records\' from message! ")
+        raise Exception("....Skipping message")
 
     s3_bucket_name = s3_notification_records[0]['s3']['bucket']['name']
     s3_object_key = s3_notification_records[0]['s3']['object']['key']
-    if debug:
-        print(s3_bucket_name + ":" + s3_object_key)
+    s3_object_eTag = s3_notification_records[0]['s3']['object']['eTag']
+    s3_object_eventTime = s3_notification_records[0]['eventTime']
+    logger.info(s3_bucket_name + "=" + s3_object_key)
+    logger.info(s3_object_key + "=" + s3_object_key)
+    logger.info(s3_object_eTag + "=" + s3_object_eTag)
+    logger.info(s3_object_eventTime + "=" + s3_object_eventTime)
 
     ################################################################################################################
     #   Get the data from S3  
     ################################################################################################################
     try:
-        s3_client.Bucket(s3_bucket_name).download_file(s3_object_key, file_path)
-        # s3_client.Bucket(BUCKET_NAME).download_file(KEY, '/Users/druadria/Documents/codeforwork/s3-to-elasticsearch-access-logs/record.json')
-        if debug:
-            print("\n S3 File Download: COMPLETE\n")
+        s3_resource.Bucket(s3_bucket_name).download_file(s3_object_key, local_file_path)
+        logger.info("\n S3 File Download: COMPLETE\n")
     except botocore.exceptions.ClientError as e:
         if e.response['Error']['Code'] == "404":
-            print("The object does not exist.")
+            logger.error("The object does not exist.")
         else:
             raise
-
+    
+    job_data["S3_BUCKET_NAME"] = s3_bucket_name
+    job_data["S3_BUCKET_KEY"] = s3_object_key
+    job_data["S3_BUCKET_ETAG"] = s3_object_eTag
+    job_data["file_name"] = file_name
+    return job_data 
 
 
 def retrieve_s3_file_list():
     ################################################################################################################
     #   Get the data from S3 in JSON format
     ################################################################################################################
-    # with open(file_path, 'r') as f:
-    #     json_data = json.load(f)
+    with open(local_file_path, 'r') as f:
+        json_data = json.load(f)
 
-    f = gzip.open(file_path,'rb')
-    file_content_bytes = f.read()
-    file_content = file_content_bytes.decode("utf-8")
-    json_data = json.loads(file_content)
-
-    if debug:
-        print("\n\nDISPLAY JSON FILE CONTENTS")
-        print(json_data)
+    logger.debug("\n\nDISPLAY JSON FILE CONTENTS")
+    logger.debug(json_data)
 
     return json_data
-
-
         
 
 ################################################################################################################
 #   enqueue a message onto the SQS queue
 ################################################################################################################
-def enqueue_object(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX):
-    # payload ={
-#     "ETag": "\"51ec3079c61643d5e3e1b0b390141caf\"",
-#     "Key": "images/000030_22:21:09.000030_diagram.png",
-#     "LastModified": "2021-03-07 06:34:53+00:00",
-#     "Size": 98831,
-#     "StorageClass": "STANDARD",
-#     "bucket_name": "s3workflow-imagesbucketd1ef9a17-16f4rwi6wz5w7",
-#     "bucket_prefix": "images/",
-#     "bucket_suffix": ""
-# }
-
-    s3_object['bucket_name'] = S3_BUCKET_NAME
-    s3_object['bucket_prefix'] = S3_BUCKET_PREFIX
-    s3_object['bucket_suffix'] = S3_BUCKET_SUFFIX
-    str_payload = json.dumps(s3_object, indent=4, sort_keys=True, default=str)
-    
+def enqueue_object(job_data):
+    str_payload = json.dumps(job_data, indent=4, sort_keys=True, default=str)    
     response = sqs_client.send_message(
         QueueUrl=QUEUEURL,
-        DelaySeconds=1,
+        DelaySeconds=0,
         # MessageAttributes=,
         MessageBody=str_payload        
         # MessageBody=(
@@ -190,131 +143,13 @@ def enqueue_object(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX
     )
     logger.debug("sqs_client.send_message() to SQS Successful\n\n response={0}".format(response))
     logger.info("Sent MessageBody={0}".format(str_payload))
-    # print(response['MessageId'])
 
 
-
-def get_elasticsearch_time(time_from_record):
-    # Have:
-    # [23/Nov/2020:07:43:07
-    # Need:
-    # 2018-04-23T10:45:13.899Z
-    # Got:
-    # 2020-Nov-23T07:43:07Z
-    # 2021-Jan-1T06:23:08Z
-
-
-    if debug:
-        print('time_from_record=' + time_from_record)
-
-    time_from_record_after_replacement = time_from_record.replace('[', '')
-
-
-    if debug:
-        print('time_from_record_after_replacement=' + time_from_record_after_replacement)
-
-    time_from_record_list = time_from_record_after_replacement.split(':')
-    date_from_record = time_from_record_list[0]
-    date_from_record_list = date_from_record.split("/")
-
-    day = date_from_record_list[0]
-    month = date_from_record_list[1]
-    year = date_from_record_list[2]
-    hour = time_from_record_list[1]
-    minutes = time_from_record_list[2]
-    seconds = time_from_record_list[3]
-
-    # year = time_from_record[8:12]
-    # month = time_from_record[4:7]
-    # day = time_from_record[1:3]
-    # hour = time_from_record[13:15]
-    # minutes = time_from_record[16:18]
-    # seconds = time_from_record[19:21]
-
-    # convert month name to month number
-    datetime_object = datetime.datetime.strptime(month, "%b")
-    month_number = datetime_object.month
-    month_number_string = str(month_number)
-
-    if len(day) == 1:
-        day = "0" + day
-    if len(month_number_string) == 1:
-        month_number_string = "0" + month_number_string
-
-
-    if debug:
-        print(day)
-        print(month_number_string)
-        print(year)
-        print(hour)
-        print(minutes)
-        print(seconds)
-
-    newtime = str( year + '-' + month_number_string + '-' + day + 'T' + hour + ':' + minutes + ':' + seconds + 'Z' )
-
-    if debug:
-        print('newtime=' + newtime)
-
-    return newtime
-
-
-def send_object_to_elasticsearch(json_data_from_local_file):
-    ################################################################################################################
-    #   for each object, Put records into the Elasticsearch cluster
-    ################################################################################################################    
-    index_name = ""
-    json_data = {}
-
-    if debug: 
-        print("\n\n\n\n  json_data_from_local_file = {0}\n\n\n".format(json_data_from_local_file))
-
-    if 'Records' in json_data_from_local_file:
-        for json_data in json_data_from_local_file['Records']:
-
-            ################################################################################################################
-            #   for each object, set the correct data type in the dictionary 
-            ################################################################################################################
-            for key in json_data:
-                if debug:
-                    print("\n(Starting) key = {0}".format(key))
-                    print("\n(Starting) value = {0}".format(json_data[key]))
-                    print("\n(Starting) type(value) = {0}\n".format( type(json_data[key]) ))
-
-                if json_data[key] == None:
-                    pass
-                elif json_data[key] == "":
-                    json_data[key] = None
-                else:
-                    json_data[key] = str(json_data[key])
-
-                if debug:
-                    print("\n(Final) key = {0}".format(key))
-                    print("\n(Final) value = {0}".format(json_data[key]))
-                    print("\n(Final) type(value) = {0}\n".format( type(json_data[key]) ))
-
-            index_prefix = "cloudtrail"
-            service = json_data['eventSource']
-            eventName = json_data['eventName']
-            index_name_caps = index_prefix + "-" + service + "-" + eventName
-            index_name = index_name_caps.lower()
-
-    else:   #NOT A CLOUDTRAIL RECORD, PROBABLY A CLOUDTRAIL DIGEST FILE. 
-        if debug:
-            print("\n\nNOT A CLOUDTRAIL RECORD, PROBABLY A CLOUDTRAIL DIGEST FILE!\n\n")
-        # time.sleep(5)
-
-        json_data = json_data_from_local_file
-        index_name = "cloudtrail-digest-files"
-        ################################################################################################################
-        #   for each object, set the correct data type in the dictionary
-        ################################################################################################################
-
-        for key in json_data:
-            if debug:
-                print("\n(Starting) key = {0}".format(key))
-                print("\n(Starting) value = {0}".format(json_data[key]))
-                print("\n(Starting) type(value) = {0}\n".format( type(json_data[key]) ))
-
+def send_object_to_elasticsearch(job_data):
+    str_payload = json.dumps(job_data, indent=4, sort_keys=True, default=str)
+    logger.debug("\n\n\n\n  str_payload = {0}\n\n\n".format(str_payload))
+    json_data = job_data
+    for key in json_data:
         if json_data[key] == None:
             pass
         elif json_data[key] == "":
@@ -322,33 +157,23 @@ def send_object_to_elasticsearch(json_data_from_local_file):
         else:
             json_data[key] = str(json_data[key])
 
-        for k,v in json_data.items():
-            if isinstance(v, list): 
-                json_data[k] = listToString(v)
-
-    for key in json_data:
-            if debug:
-                print("\n(Final) key = {0}".format(key))
-                print("\n(Final) value = {0}".format(json_data[key]))
-                print("\n(Final) type(value) = {0}\n".format( type(json_data[key]) ))
+    index_name_prefix = "s3workflow-image-processing"
+    unique_job_data = job_data['file_name']
+    index_name_caps = index_name_prefix + "-" + unique_job_data 
+    index_name = index_name_caps.lower()
 
     ################################################################################################################
     # Put the record into the Elasticsearch Service Domain
     ################################################################################################################
     try:
         res = elasticsearchclient.index(index=index_name, body=json_data)
-        print('res[\'result\']=')
+        logger.info('res[\'result\']=')
         print(res['result'])
-        print('\nSUCCESS: SENDING into the Elasticsearch Service Domain one at a time')
+        logger.info('\nSUCCESS: SENDING into the Elasticsearch Service Domain one at a time')
     except Exception as e:
-        print('\nFAILED: SENDING into the Elasticsearch Service Domain one at a time\n')
-        print(e)
+        logger.error('\nFAILED: SENDING into the Elasticsearch Service Domain one at a time\n')
+        logger.error(e)
         exit(1)
-
-    print('COMPLETED: Putting {0} records into the Elasticsearch Service Domain one at a time'.format( len(json_data_from_local_file) ))
-
-
-
 
 
 ################################################################################################################
@@ -360,15 +185,16 @@ def lambda_handler(event, context):
     logger.info("\n Lambda event={0}\n".format(json.dumps(event)))
     is_image_file = confirm_image_file_name(event)
     if is_image_file:
-        retrieve_s3_file(event)
+        job_data = retrieve_s3_file(event)
     else:
         logger.error("The input event does not contain image_list_file.txt")
         exit()
     
     file_list = retrieve_s3_file_list()
-    for each file in file_list: 
-        enqueue_objects(s3_object, S3_BUCKET_NAME, S3_BUCKET_PREFIX, S3_BUCKET_SUFFIX)
-        send_object_to_elasticsearch()
+    for file_key in file_list: 
+        job_data['filelist_key'] = file_key
+        enqueue_object(job_data)
+        send_object_to_elasticsearch(job_data)
 
 ################################################################################################################
 ################################################################################################################
@@ -388,7 +214,7 @@ if __name__ == "__main__":
         "eventVersion": "2.0",
         "eventSource": "aws:s3",
         "awsRegion": "us-west-2",
-        "eventTime": "1970-01-01T00:00:00.000Z",
+        "eventTime": "2021-03-016T09:00:00.000Z",
         "eventName": "ObjectCreated:Put",
         "userIdentity": {
             "principalId": "EXAMPLE"
@@ -411,7 +237,7 @@ if __name__ == "__main__":
             "arn": "arn:aws:s3:::example-bucket"
             },
             "object": {
-            "key": "images/000000_04:16:32.000000_diagram.png",
+            "key": "images/image_list_file.txt",
             "size": 1024,
             "eTag": "0123456789abcdef0123456789abcdef",
             "sequencer": "0A1B2C3D4E5F678901"
@@ -423,116 +249,6 @@ if __name__ == "__main__":
     lambda_handler(event, context)
 
 
-
-
-
-
-
-
-
-
-
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-################################################################################################################
-
-
-    ################################################################################################################
-    # Python program to convert a list to string 
-    ################################################################################################################
-# def listToString(s):  
-#     # initialize an empty string 
-#     str1 = ""  
-    
-#     # traverse in the string   
-#     for ele in s:  
-#         str1 += ele   
-#         str1 += ", "   
-    
-#     # return string   
-#     return str1  
-
-
-
-
-
-    # if context == "-": #RUNNING A LOCAL EXECUTION 
-    #     number_of_messages_in_event = len(event['Messages'])
-    #     message_number = 1
-    #     for Message in event['Messages']:
-    #         print("processing message {} of {}".format(message_number, number_of_messages_in_event))
-    #         retrieve_s3_file(Message)
-    #         json_data_from_local_file = get_json_data_from_local_file()
-    #         send_object_to_elasticsearch(json_data_from_local_file)
-    #         message_number += 1
-    # else:   #RUNNING A LAMBDA INVOCATION
-    #     number_of_records_in_event = len(event['Records'])
-    #     record_number = 1            
-    #     for Record in event['Records']:
-    #         print("processing record {} of {}".format(record_number, number_of_records_in_event))
-    #         retrieve_s3_file(Record)
-    #         json_data_from_local_file = get_json_data_from_local_file()
-    #         send_object_to_elasticsearch(json_data_from_local_file)
-    #         record_number += 1
-
-
-
-
-
-
-# def get_sqs_message(QUEUEURL, sqs_client):
-#     ###### Example of string data that was sent:#########
-#     # payload = { 
-#     # "bucketname": bucketname, 
-#     # "s3_file_name": s3_file_name
-#     # }
-#     ################################################
-
-#     receive_message_response = dict()
-#     while 'Messages' not in receive_message_response:
-#         receive_message_response = sqs_client.receive_message(
-#             QueueUrl=QUEUEURL,
-#             # AttributeNames=[
-#             #     'All'|'Policy'|'VisibilityTimeout'|'MaximumMessageSize'|'MessageRetentionPeriod'|'ApproximateNumberOfMessages'|'ApproximateNumberOfMessagesNotVisible'|'CreatedTimestamp'|'LastModifiedTimestamp'|'QueueArn'|'ApproximateNumberOfMessagesDelayed'|'DelaySeconds'|'ReceiveMessageWaitTimeSeconds'|'RedrivePolicy'|'FifoQueue'|'ContentBasedDeduplication'|'KmsMasterKeyId'|'KmsDataKeyReusePeriodSeconds',
-#             # ],
-#             # MessageAttributeNames=[
-#             #     'string',
-#             # ],
-#             MaxNumberOfMessages=1
-#             # VisibilityTimeout=123,
-#             # WaitTimeSeconds=123,
-#             # ReceiveRequestAttemptId='string'
-#         )
-#         if 'Messages' in receive_message_response:
-#             number_of_messages = len(receive_message_response['Messages'])
-#             if debug:
-#                 print("\n received {0} messages!! ....Processing message \n".format(number_of_messages))
-#             break
-#         else:
-#             print("\n received 0 messages!! waiting.....5 seconds before retrying \n")
-#             time.sleep(5)
-#             continue
-        
-
-#     ReceiptHandle = receive_message_response['Messages'][0]['ReceiptHandle']
-#     delete_message_response = sqs_client.delete_message(
-#     QueueUrl=QUEUEURL,
-#     ReceiptHandle=ReceiptHandle
-#     )
-#     if debug:
-#         print("delete_message_response = {0}".format(delete_message_response))
-#     return receive_message_response
-
-
-
+            # "key": "images/000000_04:16:32.000000_diagram.png",
 
 
