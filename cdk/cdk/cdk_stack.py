@@ -181,8 +181,7 @@ class CdkStack(core.Stack):
         # AMAZON ECS Repositories  
         ###########################################################################
         rekognition_repository = aws_ecr.Repository(self, "rekognition_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
-        put_repository = aws_ecr.Repository(self, "put_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
-
+        comprehend_repository = aws_ecr.Repository(self, "comprehend_repository", image_scan_on_push=True, removal_policy=core.RemovalPolicy("DESTROY") )
 
         ###########################################################################
         # AMAZON ECS Roles and Policies
@@ -248,7 +247,7 @@ class CdkStack(core.Stack):
         # AMAZON ECS Images 
         ###########################################################################
         rekognition_ecr_image = aws_ecs.EcrImage(repository=rekognition_repository, tag="latest")
-        comprehend_ecr_image = aws_ecs.EcrImage(repository=put_repository, tag="latest")
+        comprehend_ecr_image = aws_ecs.EcrImage(repository=comprehend_repository, tag="latest")
 
 
         ###########################################################################

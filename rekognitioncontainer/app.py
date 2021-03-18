@@ -1,8 +1,9 @@
 import boto3
+from elasticsearch import Elasticsearch, RequestsHttpConnection
 from botocore.exceptions import NoCredentialsError
 from botocore.exceptions import ClientError
+from requests_aws4auth import AWS4Auth
 from datetime import datetime
-import dns.resolver
 import os 
 import pprint
 import json 
@@ -15,44 +16,27 @@ from oneagent.common import AgentState
 
 
 ################################################################################################################
-#   Get the queue name to dequeue messages 
-################################################################################################################
-def get_queuename():
-    bytes_response = dns.resolver.query("filesqueue.loadtest.com","TXT").response.answer[0][-1].strings[0]
-    response = bytes_response.decode("utf-8")
-    print("\n filesqueue.loadtest.com= {0}\n".format(response))
-    print(response)
-    return response
-
-
-################################################################################################################
 #   Get messages from queue 
 ################################################################################################################
-def dequeue_message(QUEUEURL, sqs_client):
-    ###### Example of string data that was sent:#########
-    # payload = { 
-    # "bucketname": bucketname, 
-    # "s3_file_name": s3_file_name
-    # }
-    ################################################
-
-    receive_message_response = sqs_client.receive_message(
-        QueueUrl=QUEUEURL,
-        MaxNumberOfMessages=1
-    )
-
-    if 'Messages' in receive_message_response:
-        number_of_messages = len(receive_message_response['Messages'])
-        print("\n received {0} messages!! ....Processing message \n".format(number_of_messages))
-    else:
-        print("\n received 0 messages!! waiting.....5 seconds before retrying \n")
-        time.sleep(5)
-        return ["wait", "wait"]
+def get_message(sqs_client, QUEUEURL):
+    no_messages_received = True
+    while no_messages_received:
+        receive_message_response = sqs_client.receive_message(
+            QueueUrl=QUEUEURL,
+            MaxNumberOfMessages=1
+        )
+        if 'Messages' in receive_message_response:
+            number_of_messages = len(receive_message_response['Messages'])
+            print("\n received {0} messages!! ....Processing message \n".format(number_of_messages))
+            no_messages_received = False
+        else:
+            print("\n received 0 messages!! waiting.....2 seconds before retrying \n")
+            time.sleep(2)
 
     message_body=json.loads(receive_message_response['Messages'][0]['Body'])
     print("message_body = {0} \n".format(message_body))
-    bucketname = message_body['bucketname']
-    objectkey = message_body['s3_file_name']
+    # bucketname = message_body['bucketname']
+    # objectkey = message_body['s3_file_name']
 
     ReceiptHandle = receive_message_response['Messages'][0]['ReceiptHandle']
     delete_message_response = sqs_client.delete_message(
@@ -61,35 +45,84 @@ def dequeue_message(QUEUEURL, sqs_client):
     )
     print("delete_message_response = {0}".format(delete_message_response))
 
-    return [bucketname, objectkey]
+    return message_body
 
 
-################################################################################################################
-#   Download files continuously from S3
-################################################################################################################
-def start_downloads(QUEUEURL, sqs_client, s3_client, sdk):
-    while True:
+def detect_text(rekognition_client, message):
+    response = rekognition_client.detect_text(
+        Image={
+            # 'Bytes': b'bytes',
+            'S3Object': {
+                'Bucket': message['S3_BUCKET_NAME'],
+                'Name': message['filelist_key']
+                # 'Version': 'string'
+            }
+        }
+        # Filters={
+        #     'WordFilter': {
+        #         'MinConfidence': ...,
+        #         'MinBoundingBoxHeight': ...,
+        #         'MinBoundingBoxWidth': ...
+        #     },
+        #     'RegionsOfInterest': [
+        #         {
+        #             'BoundingBox': {
+        #                 'Width': ...,
+        #                 'Height': ...,
+        #                 'Left': ...,
+        #                 'Top': ...
+        #             }
+        #         },
+        #     ]
+        # }
+    )
+    print("response=" + str(response))
+    return response
 
-        now = datetime.now() # current date and time
-        time_now = now.strftime("%H:%M:%S.%f")
-        print("\n In start_downloads() Time now: " + time_now)
+def send_message(sqs_client, message, COMPREHEND_QUEUE):
+    str_payload = json.dumps(message, indent=4, sort_keys=True, default=str)    
+    response = sqs_client.send_message(
+        QueueUrl=COMPREHEND_QUEUE,
+        DelaySeconds=0,
+        # MessageAttributes=,
+        MessageBody=str_payload        
+        # MessageBody=(
+        #     'Information about current NY Times fiction bestseller for '
+        #     'week of 12/11/2016.'
+        # )
+    )
+    print("sqs_client.send_message() to SQS Successful\n\n response={0}".format(response))
+    print("Sent MessageBody={0}".format(str_payload))
 
-        with sdk.trace_custom_service('dequeue_message()', 'SQS'):
-            message = dequeue_message(QUEUEURL, sqs_client)
-        print("\n message={0}\n".format(message))
 
-        bucketname = message[0]
-        objectkey = message[1]
+def put_document(elasticsearchclient, job_data):
+    str_payload = json.dumps(job_data, indent=4, sort_keys=True, default=str)
+    print("\n\n\n\n  str_payload = {0}\n\n\n".format(str_payload))
+    json_data = job_data['detect_text_response']
+    for key in json_data:
+        if json_data[key] == None:
+            pass
+        elif json_data[key] == "":
+            json_data[key] = None
+        else:
+            json_data[key] = str(json_data[key])
+    index_name_prefix = "s3workflow-image-processing"
+    unique_job_data = job_data['file_name'] + "-rekognition"
+    index_name_caps = index_name_prefix + "-" + unique_job_data 
+    index_name = index_name_caps.lower()
 
-        with sdk.trace_custom_service('get_object()', 'S3'):
-            if bucketname != "wait":
-                try:
-                    get_object_response = s3_client.get_object(
-                        Bucket=bucketname,
-                        Key=objectkey
-                    )
-                except ClientError as e:
-                    print("Error downloading object: {0} from bucket: {1}".format(objectkey, bucketname))
+    ################################################################################################################
+    # Put the record into the Elasticsearch Service Domain
+    ################################################################################################################
+    try:
+        res = elasticsearchclient.index(index=index_name, body=json_data)
+        print('res[\'result\']=')
+        print(res['result'])
+        print('\nSUCCESS: SENDING into the Elasticsearch Service Domain one at a time')
+    except Exception as e:
+        print('\nFAILED: SENDING into the Elasticsearch Service Domain one at a time\n')
+        print(e)
+        exit(1)
 
 
 ################################################################################################################
@@ -122,8 +155,6 @@ if __name__ == '__main__':
             print('Dynatrace SDK agent is NOT Active, you will not see data from this process.')
         sdk.set_diagnostic_callback(_diag_callback)
         print('It may take a few moments before the path appears in the UI.')
-        ################################################################################################################
-
 
         ################################################################################################################
         # Get and Print the list of user's environment variables 
@@ -133,27 +164,41 @@ if __name__ == '__main__':
         ################################################################################################################
 
         ################################################################################################################
-        sdk.add_custom_request_attribute('Method', 'get_queuename()')
-        sdk.add_custom_request_attribute('Container', 'Put')
-        sdk.add_custom_request_attribute('famous actor', 'Benedict Cumberbatch')
-        with sdk.trace_custom_service('get_queuename()', 'DNS'):
-            QUEUEURL = get_queuename()
-        # QUEUEURL = "https://sqs.us-west-2.amazonaws.com/696965430582/S3LoadTest-ecstaskqueuequeue6E80C2CD-14EYBYEKSI2FE"
-        ################################################################################################################
-
-        ################################################################################################################
         sqs_client = boto3.client('sqs')
-        s3_client = boto3.client('s3')
-        start_downloads(QUEUEURL, sqs_client, s3_client, sdk)
-        ################################################################################################################
+        region = os.environ['AWS_REGION']
+        rekognition_client = boto3.client('rekognition')
+        REKOGNITION_QUEUE = env_var['REKOGNITION_QUEUE']
+        COMPREHEND_QUEUE = env_var['COMPREHEND_QUEUE']
+        ELASTICSEARCH_HOST = env_var['ELASTICSEARCH_HOST']
+        # Connect to Elasticsearch Service Domain
+        service = 'es'
+        credentials = boto3.Session().get_credentials()
+        awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, service, session_token=credentials.token)
+        elasticsearchclient = Elasticsearch(
+            hosts = [{'host': ELASTICSEARCH_HOST, 'port': 443}],
+            http_auth = awsauth,
+            use_ssl = True,
+            verify_certs = True,
+            connection_class = RequestsHttpConnection
+        )
+        sdk.add_custom_request_attribute('project', 's3workflow')
+        sdk.add_custom_request_attribute('Container', 'rekognitioncontainer')
 
+        while True:
+            with sdk.trace_custom_service('get_message()', 'SQS'):
+                message = get_message(sqs_client, REKOGNITION_QUEUE)
+
+            with sdk.trace_custom_service('detect_text()', 'REKOGNITION'):
+                detect_text_response = detect_text(rekognition_client, message)
+
+            message['detect_text_response'] = detect_text_response
+            with sdk.trace_custom_service('send_message()', 'SQS'):
+                send_message(sqs_client, message, COMPREHEND_QUEUE)
+
+            with sdk.trace_custom_service('put_document()', 'ELASTICSEARCH'):
+                put_document(elasticsearchclient, message)
     finally:
         shutdown_error = oneagent.shutdown()
         if shutdown_error:
             print('Error shutting down SDK:', shutdown_error)
-
-
-
-
-
 
