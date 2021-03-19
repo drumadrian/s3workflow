@@ -109,7 +109,8 @@ def retrieve_s3_file(message):
     job_data["S3_BUCKET_NAME"] = s3_bucket_name
     job_data["S3_BUCKET_KEY"] = s3_object_key
     job_data["S3_BUCKET_ETAG"] = s3_object_eTag
-    job_data["file_name"] = file_name
+    job_data["S3_BUCKET_ETAG"] = s3_object_eTag
+    job_data["s3_object_eventTime"] = s3_object_eventTime
     return job_data 
 
 
@@ -157,8 +158,12 @@ def send_object_to_elasticsearch(job_data):
         else:
             json_data[key] = str(json_data[key])
 
-    index_name_prefix = "s3workflow-image-processing"
-    unique_job_data = job_data['file_name']
+    # Need:
+    # 2018-04-23T10:45:13.899Z
+
+
+    index_name_prefix = "s3workflow-imagelistfile"
+    unique_job_data = job_data['s3_file_key_for_es'] + "-" + job_data['S3_BUCKET_ETAG']
     index_name_caps = index_name_prefix + "-" + unique_job_data 
     index_name = index_name_caps.lower()
 
@@ -189,7 +194,7 @@ def lambda_handler(event, context):
     else:
         logger.error("The input event does not contain image_list_file.txt")
         exit()
-    
+    job_data['s3_file_key_for_es'] = s3_file_key.replace('/','-')    
     file_list = retrieve_s3_file_list()
     for file_key in file_list: 
         job_data['filelist_key'] = file_key
@@ -214,7 +219,7 @@ if __name__ == "__main__":
         "eventVersion": "2.0",
         "eventSource": "aws:s3",
         "awsRegion": "us-west-2",
-        "eventTime": "2021-03-016T09:00:00.000Z",
+        "eventTime": "2021-03-16T09:00:00.000Z",
         "eventName": "ObjectCreated:Put",
         "userIdentity": {
             "principalId": "EXAMPLE"

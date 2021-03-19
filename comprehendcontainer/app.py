@@ -77,7 +77,7 @@ def send_message(sqs_client, message, COMPREHEND_QUEUE):
 def put_document(elasticsearchclient, job_data):
     str_payload = json.dumps(job_data, indent=4, sort_keys=True, default=str)
     print("\n\n\n\n  str_payload = {0}\n\n\n".format(str_payload))
-    json_data = job_data['detect_text_response']
+    json_data = job_data
     for key in json_data:
         if json_data[key] == None:
             pass
@@ -85,8 +85,8 @@ def put_document(elasticsearchclient, job_data):
             json_data[key] = None
         else:
             json_data[key] = str(json_data[key])
-    index_name_prefix = "s3workflow-image-processing"
-    unique_job_data = job_data['file_name'] + "-comprehend"
+    index_name_prefix = "s3workflow-comprehend"
+    unique_job_data = job_data['s3_file_key_for_es'] + "-" + job_data['S3_BUCKET_ETAG']
     index_name_caps = index_name_prefix + "-" + unique_job_data 
     index_name = index_name_caps.lower()
 
@@ -172,9 +172,11 @@ if __name__ == '__main__':
                 DetectedText_list = DetectedText_list + " " + TextDetection['DetectedText']
 
             with sdk.trace_custom_service('detect_pii_entities()', 'COMPREHEND'):
-                detect_text_response = detect_pii_entities(comprehend_client, DetectedText_list)
+                detect_pii_entities_response = detect_pii_entities(comprehend_client, DetectedText_list)
             
-            message['detect_pii_entities'] = detect_text_response
+            message['detect_pii_entities_response'] = detect_pii_entities_response
+            message['DetectedText_list'] = DetectedText_list
+            # message.pop('detect_text_response', None)
             with sdk.trace_custom_service('put_document()', 'ELASTICSEARCH'):
                 put_document(elasticsearchclient, message)
     finally:
