@@ -39,7 +39,7 @@ class CdkStack(core.Stack):
         handler='parse_image_list_file.lambda_handler',
         runtime=aws_lambda.Runtime.PYTHON_3_7,
         code=aws_lambda.Code.asset('parse_image_list_file'),
-        memory_size=4096,
+        memory_size=10240,
         timeout=core.Duration.seconds(300),
         log_retention=aws_logs.RetentionDays.ONE_DAY
         )
